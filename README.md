@@ -16,7 +16,8 @@ bank-anomaly-detection/
 │   ├── raw/              # Datos originales descargados de Kaggle (no versionados)
 │   └── processed/        # Datos transformados listos para modelado (no versionados)
 ├── notebooks/
-│   └── 01_eda_paysim.ipynb     # Análisis exploratorio del dataset PaySim
+│   ├── 01_eda_paysim.ipynb                     # Análisis exploratorio del dataset PaySim
+│   └── 02_unsupervised_anomaly_detection.ipynb # Módulo 2: detección de fraude zero-day
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -27,6 +28,10 @@ bank-anomaly-detection/
 │   │   ├── train.py            # Entrenamiento, comparación y selección de modelos
 │   │   ├── visualize.py        # Curvas ROC/PR y matrices de confusión comparativas
 │   │   └── predict.py          # Inferencia sobre datos nuevos
+│   ├── unsupervised/            # Módulo 2: detección no supervisada de anomalías
+│   │   ├── loader.py            # Datos de entrenamiento (solo normales) y prueba (mixta)
+│   │   ├── models.py            # Isolation Forest y Local Outlier Factor
+│   │   └── train_unsupervised.py  # Entrenamiento, evaluación (Precision@k) y gráficas
 │   └── utils/                  # Funciones auxiliares compartidas
 ├── tests/                 # Pruebas unitarias (pytest) para preprocessing y build_features
 ├── requirements.txt
@@ -72,6 +77,30 @@ Pruebas unitarias:
 ```bash
 pytest tests/
 ```
+
+Detección no supervisada de anomalías (Módulo 2):
+
+```bash
+python -m src.unsupervised.train_unsupervised
+```
+
+## Módulo 2: Detección de fraude desconocido / zero-day (no supervisado)
+
+El Módulo 1 entrena con fraude ya etiquetado, así que solo puede reconocer patrones parecidos a fraude que ya ocurrió antes. El Módulo 2 cubre el caso complementario: un esquema de fraude genuinamente nuevo ("zero-day") no se parece a nada visto en el entrenamiento, y un modelo supervisado no tiene por qué detectarlo. El enfoque aquí es aprender únicamente la forma de lo normal y señalar como anómalo cualquier caso que se aleje de ese patrón, sin usar una sola etiqueta de fraude durante el ajuste.
+
+**Datos**: en vez de descargar `mlg-ulb/creditcardfraud` vía `kagglehub` (requeriría credenciales de Kaggle adicionales que este entorno no tiene configuradas), `src/unsupervised/loader.py` reutiliza el PaySim ya presente en `data/raw/paysim.csv` — mismas funciones `clean_data`/`build_features` del Módulo 1 — y separa:
+- **Train**: una muestra de transacciones normales (`isFraud == 0`); el modelo nunca ve un fraude al ajustarse.
+- **Test**: una muestra de normales + *todas* las transacciones fraudulentas disponibles, para tener suficientes anomalías reales con las que medir desempeño.
+
+El tamaño de la muestra de entrenamiento se mantiene acotado (30k filas) a propósito: Local Outlier Factor en modo *novelty* necesita construir un índice de vecinos y consultarlo por cada predicción, algo que no escala a los 6.3M de filas del dataset completo.
+
+**Modelos** (`src/unsupervised/models.py`):
+- **Isolation Forest** (`sklearn.ensemble.IsolationForest`) — aísla puntos con particiones aleatorias; las anomalías requieren menos particiones para quedar aisladas.
+- **Local Outlier Factor** (`sklearn.neighbors.LocalOutlierFactor`, `novelty=True`) — compara la densidad local de un punto contra la de sus vecinos más cercanos.
+
+Ambos exponen un **Anomaly Score** continuo homogéneo (`anomaly_score()`, valores más altos = más anómalo) derivado de `score_samples`, sobre features escaladas con `RobustScaler` (ajustado solo con datos de entrenamiento) por la fuerte asimetría de montos y saldos.
+
+**Evaluación** (`src/unsupervised/train_unsupervised.py`): PR-AUC y Precision@k/Recall@k (k = 50, 100, 200 — "de las k transacciones más anómalas señaladas, ¿cuántas son fraude real?", la pregunta que le importa a un analista con capacidad de revisión limitada). Genera `data/processed/figures/unsupervised_scores.png` (distribución del Anomaly Score por clase) y `data/processed/figures/unsupervised_pr_curve.png` (curva Precision-Recall comparativa), y serializa Isolation Forest junto con su `RobustScaler` en `data/processed/isolation_forest.joblib`.
 
 ## Stack técnico
 
