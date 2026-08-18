@@ -15,7 +15,8 @@ bank-anomaly-detection/
 ├── data/
 │   ├── raw/              # Datos originales descargados de Kaggle (no versionados)
 │   └── processed/        # Datos transformados listos para modelado (no versionados)
-├── notebooks/             # Notebooks de exploración y análisis (EDA, prototipado)
+├── notebooks/
+│   └── 01_eda_paysim.ipynb     # Análisis exploratorio del dataset PaySim
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -23,10 +24,11 @@ bank-anomaly-detection/
 │   ├── features/
 │   │   └── build_features.py   # Ingeniería de características para el modelo
 │   ├── models/
-│   │   ├── train.py            # Entrenamiento y validación de modelos
+│   │   ├── train.py            # Entrenamiento, comparación y selección de modelos
+│   │   ├── visualize.py        # Curvas ROC/PR y matrices de confusión comparativas
 │   │   └── predict.py          # Inferencia sobre datos nuevos
 │   └── utils/                  # Funciones auxiliares compartidas
-├── tests/                 # Pruebas unitarias (pytest)
+├── tests/                 # Pruebas unitarias (pytest) para preprocessing y build_features
 ├── requirements.txt
 └── README.md
 ```
@@ -56,6 +58,20 @@ python -m src.data.loader
 ```
 
 Esto descargará el dataset desde Kaggle mediante `kagglehub` (requiere credenciales de Kaggle configuradas), lo copiará a `data/raw/paysim.csv` e imprimirá un resumen de las dimensiones, primeras filas y distribución porcentual de la clase `isFraud`.
+
+Entrenamiento y comparación de modelos:
+
+```bash
+python -m src.models.train
+```
+
+Ejecuta el pipeline completo (carga → limpieza → features → split) y entrena tres modelos candidatos (Regresión Logística, Random Forest y XGBoost), cada uno con manejo de clases desbalanceadas (`class_weight="balanced"` / `scale_pos_weight`). Imprime `classification_report`, matriz de confusión, ROC-AUC y PR-AUC por modelo, guarda el de mejor PR-AUC (la métrica más informativa en fraude, dado el desbalance extremo de clases) en `data/processed/model.joblib`, y genera curvas ROC/Precision-Recall y matrices de confusión comparativas en `data/processed/figures/`.
+
+Pruebas unitarias:
+
+```bash
+pytest tests/
+```
 
 ## Stack técnico
 
