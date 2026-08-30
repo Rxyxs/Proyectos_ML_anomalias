@@ -8,5 +8,3 @@ __pycache__/
 *.joblib
 *.pkl
 .DS_Store
-CLAUDE.md
-.claude/
