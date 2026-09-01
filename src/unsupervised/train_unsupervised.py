@@ -15,19 +15,36 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, precision_recall_curve
 from sklearn.preprocessing import RobustScaler
 
+from src.unsupervised.autoencoder import reconstruction_error, train_autoencoder
 from src.unsupervised.loader import get_unsupervised_data
-from src.unsupervised.models import anomaly_score, build_isolation_forest, build_lof
+from src.unsupervised.metrics_store import save_metrics
+from src.unsupervised.models import anomaly_score, build_isolation_forest, build_lof, build_mad_baseline
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "isolation_forest.joblib"
 FIGURES_DIR = PROJECT_ROOT / "data" / "processed" / "figures"
 SCORES_FIGURE_PATH = FIGURES_DIR / "unsupervised_scores.png"
 PR_CURVE_FIGURE_PATH = FIGURES_DIR / "unsupervised_pr_curve.png"
+ACTIVATION_FIGURE_PATH = FIGURES_DIR / "autoencoder_activations.png"
 
 K_VALUES = [50, 100, 200]
 
-MODEL_LABELS = {"isolation_forest": "Isolation Forest", "lof": "Local Outlier Factor"}
-MODEL_COLORS = {"isolation_forest": "#2a78d6", "lof": "#eb6834"}
+MODEL_LABELS = {
+    "isolation_forest": "Isolation Forest",
+    "lof": "Local Outlier Factor",
+    "mad_baseline": "Baseline estadístico (MAD-z)",
+    "autoencoder_relu": "Autoencoder (ReLU)",
+    "autoencoder_gelu": "Autoencoder (GELU)",
+    "autoencoder_swish": "Autoencoder (Swish)",
+}
+MODEL_COLORS = {
+    "isolation_forest": "#2a78d6",
+    "lof": "#eb6834",
+    "mad_baseline": "#8a8a8a",
+    "autoencoder_relu": "#4caf50",
+    "autoencoder_gelu": "#9c27b0",
+    "autoencoder_swish": "#e91e63",
+}
 INK_PRIMARY = "#0b0b0b"
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#898781"
@@ -140,6 +157,7 @@ if __name__ == "__main__":
     models = {
         "isolation_forest": build_isolation_forest(),
         "lof": build_lof(),
+        "mad_baseline": build_mad_baseline(),
     }
 
     results = {}
@@ -155,15 +173,50 @@ if __name__ == "__main__":
         for k, (precision, recall) in metrics["precision_recall_at_k"].items():
             print(f"  Precision@{k}: {precision:.4f} | Recall@{k}: {recall:.4f}")
 
+    # Autoencoder (PyTorch): mismo entrenamiento (solo normales) con tres activaciones,
+    # para comparar su efecto en la calidad de la reconstrucción / detección.
+    for activation in ["relu", "gelu", "swish"]:
+        name = f"autoencoder_{activation}"
+        print(f"\nEntrenando {MODEL_LABELS[name]}...")
+        ae_model = train_autoencoder(X_train_scaled.astype("float32"), activation=activation)
+        scores = reconstruction_error(ae_model, X_test_scaled.astype("float32"))
+        metrics = evaluate(y_test, scores)
+        results[name] = {"model": ae_model, "scores": scores, **metrics}
+
+        print(f"--- {MODEL_LABELS[name]} ---")
+        print(f"PR-AUC: {metrics['pr_auc']:.4f}")
+        for k, (precision, recall) in metrics["precision_recall_at_k"].items():
+            print(f"  Precision@{k}: {precision:.4f} | Recall@{k}: {recall:.4f}")
+
     best_name = max(results, key=lambda n: results[n]["pr_auc"])
     print(f"\nMejor modelo por PR-AUC: {MODEL_LABELS[best_name]} ({results[best_name]['pr_auc']:.4f})")
 
-    plot_score_distributions(results, y_test)
+    plot_score_distributions(
+        {k: v for k, v in results.items() if k in ("isolation_forest", "lof", "mad_baseline")}, y_test
+    )
     plot_pr_curve(results, y_test)
+
+    # Comparación específica de activaciones del autoencoder (PR-AUC por activación).
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    ae_names = ["autoencoder_relu", "autoencoder_gelu", "autoencoder_swish"]
+    ae_labels = [MODEL_LABELS[n] for n in ae_names]
+    ae_scores = [results[n]["pr_auc"] for n in ae_names]
+    ax.bar(ae_labels, ae_scores, color=[MODEL_COLORS[n] for n in ae_names])
+    ax.set_ylabel("PR-AUC", color=INK_SECONDARY)
+    ax.set_title("Autoencoder — PR-AUC por función de activación", color=INK_PRIMARY, fontsize=12)
+    _style_axes(ax)
+    fig.tight_layout()
+    ACTIVATION_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(ACTIVATION_FIGURE_PATH, dpi=150)
+
     plt.close("all")
     print(f"\nGráfica de distribución de anomaly scores: {SCORES_FIGURE_PATH}")
     print(f"Gráfica de curva Precision-Recall: {PR_CURVE_FIGURE_PATH}")
+    print(f"Gráfica comparativa de activaciones del autoencoder: {ACTIVATION_FIGURE_PATH}")
 
     MODEL_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": results["isolation_forest"]["model"], "scaler": scaler}, MODEL_OUTPUT_PATH)
     print(f"\nIsolation Forest (+ scaler) guardado en {MODEL_OUTPUT_PATH}")
+
+    save_metrics(results)
+    print("Métricas comparativas guardadas en data/processed/metrics.duckdb")

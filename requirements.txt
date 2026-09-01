@@ -7,3 +7,5 @@ matplotlib
 seaborn
 pytest
 kagglehub
+torch
+duckdb

@@ -5,14 +5,16 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-Isolation%20Forest%20%7C%20LOF-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-8%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-20%20passing-brightgreen?logo=pytest&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 Fraud and anomaly detection system for mobile banking transactions, built on the synthetic **PaySim** dataset ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) on Kaggle), which simulates financial transactions based on a month of data from a real mobile money service in Africa.
 
 ## Honest note on validation
 
-This README documents the project's architecture, design, and reasoning in detail, but **running the full pipeline (supervised Module 1 and unsupervised Module 2) requires downloading the PaySim dataset via `kagglehub`, which in turn requires configured Kaggle credentials** — not available in the environment where this documentation update was prepared. What *was* directly verified in this environment: **8/8 unit tests passing** (`pytest tests/`, covering `preprocessing.py` and `build_features.py` with synthetic data, no real download needed). The model metrics mentioned in the code (ROC-AUC, PR-AUC, Precision@k) are not reported here as numbers because they weren't re-run in this session — anyone who clones the repo and configures their own Kaggle credentials can generate them by following the Usage steps below.
+This README documents the project's architecture, design, and reasoning in detail, but **running the full pipeline (supervised Module 1 and unsupervised Module 2) requires downloading the PaySim dataset via `kagglehub`, which in turn requires configured Kaggle credentials** — not available in the environment where this documentation update was prepared. What *was* directly verified in this environment: **20/20 unit tests passing** (`pytest tests/`, covering `preprocessing.py` and `build_features.py` with synthetic data, no real download needed). The model metrics mentioned in the code (ROC-AUC, PR-AUC, Precision@k) are not reported here as numbers because they weren't re-run in this session — anyone who clones the repo and configures their own Kaggle credentials can generate them by following the Usage steps below.
 
 ## Goal
 
@@ -26,8 +28,9 @@ flowchart LR
     B --> C[build_features.py]
     C --> D["train.py<br/>LogReg / Random Forest / XGBoost"]
     D --> E[(model.joblib<br/>best PR-AUC)]
-    C --> F["train_unsupervised.py<br/>Isolation Forest / LOF, normal-only"]
+    C --> F["train_unsupervised.py<br/>Isolation Forest / LOF / MAD-z / Autoencoder, normal-only"]
     F --> G[(isolation_forest.joblib<br/>+ RobustScaler)]
+    F --> H[(metrics.duckdb<br/>PR-AUC / Precision@k per run)]
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -52,10 +55,13 @@ bank-anomaly-detection/
 │   │   └── predict.py          # Inference on new data
 │   ├── unsupervised/            # Module 2: unsupervised anomaly detection
 │   │   ├── loader.py            # Training data (normal-only) and test data (mixed)
-│   │   ├── models.py            # Isolation Forest and Local Outlier Factor
+│   │   ├── models.py            # Isolation Forest, LOF, MAD-z statistical baseline
+│   │   ├── autoencoder.py       # PyTorch Autoencoder (ReLU/GELU/Swish activations)
+│   │   ├── metrics_store.py     # Comparative metrics persistence (DuckDB)
 │   │   └── train_unsupervised.py  # Training, evaluation (Precision@k), and plots
 │   └── utils/                  # Shared helper functions
-├── tests/                 # Unit tests (pytest) for preprocessing and build_features
+├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
+│                           # autoencoder, metrics store
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -118,13 +124,30 @@ Module 1 trains on already-labeled fraud, so it can only recognize patterns simi
 
 The training sample size is deliberately kept bounded (30k rows): Local Outlier Factor in *novelty* mode needs to build a neighbor index and query it for every prediction, which doesn't scale to the full dataset's 6.3M rows.
 
-**Models** (`src/unsupervised/models.py`):
+**Models** (`src/unsupervised/models.py`, `src/unsupervised/autoencoder.py`):
 - **Isolation Forest** (`sklearn.ensemble.IsolationForest`) — isolates points via random partitions; anomalies require fewer partitions to become isolated.
 - **Local Outlier Factor** (`sklearn.neighbors.LocalOutlierFactor`, `novelty=True`) — compares a point's local density against its nearest neighbors' density.
+- **MAD-z statistical baseline** (`MADBaseline`) — a non-iterative baseline: memorizes the median and Median Absolute Deviation (MAD) per feature at fit time, then scores each row by the maximum robust z-score across its features. Robust to the heavy-tailed distribution of amounts/balances, unlike a plain mean/std z-score.
+- **Autoencoder** (`src/unsupervised/autoencoder.py`, PyTorch) — a symmetric fully-connected encoder/decoder with a central bottleneck, trained only on normal transactions to minimize reconstruction MSE; the anomaly score is the reconstruction error itself (`reconstruction_error()`), higher = more anomalous. Trained and compared with three activation functions on the same architecture — **ReLU**, **GELU**, and **Swish** (`nn.SiLU`) — to illustrate their effect on reconstruction quality on this tabular dataset.
 
-Both expose a homogeneous continuous **Anomaly Score** (`anomaly_score()`, higher values = more anomalous) derived from `score_samples`, over features scaled with `RobustScaler` (fit on training data only) due to the strong skew of amounts and balances.
+All four families expose a homogeneous continuous **Anomaly Score** (higher values = more anomalous), over features scaled with `RobustScaler` (fit on training data only) due to the strong skew of amounts and balances.
 
-**Evaluation** (`src/unsupervised/train_unsupervised.py`): PR-AUC and Precision@k/Recall@k (k = 50, 100, 200 — "of the k most anomalous flagged transactions, how many are real fraud?", the question that matters to an analyst with limited review capacity). Generates `data/processed/figures/unsupervised_scores.png` (Anomaly Score distribution by class) and `data/processed/figures/unsupervised_pr_curve.png` (comparative Precision-Recall curve), and serializes Isolation Forest along with its `RobustScaler` to `data/processed/isolation_forest.joblib`.
+**Evaluation** (`src/unsupervised/train_unsupervised.py`): PR-AUC and Precision@k/Recall@k (k = 50, 100, 200 — "of the k most anomalous flagged transactions, how many are real fraud?", the question that matters to an analyst with limited review capacity). Generates `data/processed/figures/unsupervised_scores.png` (Anomaly Score distribution by class, Isolation Forest / LOF / MAD baseline), `data/processed/figures/unsupervised_pr_curve.png` (comparative Precision-Recall curve across all models), and `data/processed/figures/autoencoder_activations.png` (PR-AUC by activation function). Serializes Isolation Forest along with its `RobustScaler` to `data/processed/isolation_forest.joblib`, and persists PR-AUC/Precision@k/Recall@k per model and per run to a local DuckDB file (`data/processed/metrics.duckdb`, via `src/unsupervised/metrics_store.py`) for cross-run comparison.
+
+### Model comparison (Module 2)
+
+| Model | Type | Anomaly score | Notes |
+|---|---|---|---|
+| Isolation Forest | Ensemble, tree-based | `-score_samples` | Handles non-linear boundaries well, fast to train |
+| Local Outlier Factor | Density-based (novelty mode) | `-score_samples` | Sensitive to local density variation |
+| MAD-z baseline | Statistical, non-iterative | max robust z-score | No hyperparameters, fast, interpretable per-feature |
+| Autoencoder (ReLU / GELU / Swish) | Deep learning (PyTorch) | Reconstruction MSE | Captures non-linear feature interactions; activation choice affects reconstruction quality |
+
+PR-AUC, Precision@k, and Recall@k for each model/run are persisted to `data/processed/metrics.duckdb` (query it directly with `duckdb.connect(...)` or `src.unsupervised.metrics_store.load_latest_metrics()`) — exact numbers depend on the PaySim download and are not hardcoded here, consistent with the honest-validation note above.
+
+![Anomaly score distributions](data/processed/figures/unsupervised_scores.png)
+![Precision-Recall curve](data/processed/figures/unsupervised_pr_curve.png)
+![Autoencoder activation comparison](data/processed/figures/autoencoder_activations.png)
 
 ## Tech Stack
 
@@ -133,6 +156,8 @@ Both expose a homogeneous continuous **Anomaly Score** (`anomaly_score()`, highe
 - **xgboost** — gradient-boosting model for fraud classification
 - **imbalanced-learn** — resampling techniques (SMOTE, undersampling) for class imbalance
 - **matplotlib / seaborn** — exploratory visualization
+- **pytorch** — Autoencoder for anomaly detection via reconstruction error
+- **duckdb** — local persistence of comparative metrics across runs
 - **pytest** — unit tests
 - **kagglehub** — programmatic dataset download from Kaggle
 

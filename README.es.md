@@ -5,14 +5,16 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-Isolation%20Forest%20%7C%20LOF-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-8%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-20%20passing-brightgreen?logo=pytest&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 Sistema de detección de fraude y anomalías en transacciones bancarias móviles, construido sobre el dataset sintético **PaySim** ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) en Kaggle), que simula transacciones financieras a partir de un mes de datos de un servicio real de dinero móvil en África.
 
 ## Nota honesta sobre validación
 
-Este README documenta la arquitectura, el diseño y el razonamiento del proyecto en detalle, pero **la corrida completa del pipeline (Módulo 1 supervisado y Módulo 2 no supervisado) requiere descargar el dataset PaySim vía `kagglehub`, que a su vez requiere credenciales de Kaggle configuradas** — no disponibles en el entorno donde se preparó esta actualización de documentación. Lo que sí se verificó directamente en este entorno: **8/8 tests unitarios pasando** (`pytest tests/`, que cubren `preprocessing.py` y `build_features.py` con datos sintéticos, sin necesitar la descarga real). Las métricas de modelo (ROC-AUC, PR-AUC, Precision@k) mencionadas en el código no se reportan aquí como números porque no fueron re-ejecutadas en esta sesión — quien clone el repo y configure sus propias credenciales de Kaggle puede generarlas siguiendo los pasos de Uso más abajo.
+Este README documenta la arquitectura, el diseño y el razonamiento del proyecto en detalle, pero **la corrida completa del pipeline (Módulo 1 supervisado y Módulo 2 no supervisado) requiere descargar el dataset PaySim vía `kagglehub`, que a su vez requiere credenciales de Kaggle configuradas** — no disponibles en el entorno donde se preparó esta actualización de documentación. Lo que sí se verificó directamente en este entorno: **20/20 tests unitarios pasando** (`pytest tests/`, que cubren `preprocessing.py` y `build_features.py` con datos sintéticos, sin necesitar la descarga real). Las métricas de modelo (ROC-AUC, PR-AUC, Precision@k) mencionadas en el código no se reportan aquí como números porque no fueron re-ejecutadas en esta sesión — quien clone el repo y configure sus propias credenciales de Kaggle puede generarlas siguiendo los pasos de Uso más abajo.
 
 ## Objetivo
 
@@ -26,8 +28,9 @@ flowchart LR
     B --> C[build_features.py]
     C --> D["train.py<br/>LogReg / Random Forest / XGBoost"]
     D --> E[(model.joblib<br/>mejor PR-AUC)]
-    C --> F["train_unsupervised.py<br/>Isolation Forest / LOF, solo normales"]
+    C --> F["train_unsupervised.py<br/>Isolation Forest / LOF / MAD-z / Autoencoder, solo normales"]
     F --> G[(isolation_forest.joblib<br/>+ RobustScaler)]
+    F --> H[(metrics.duckdb<br/>PR-AUC / Precision@k por corrida)]
 ```
 
 El proyecto sigue una arquitectura modular que separa claramente la ingesta de datos, el preprocesamiento, la ingeniería de características y el modelado, favoreciendo la reproducibilidad y la testabilidad del código:
@@ -52,10 +55,13 @@ bank-anomaly-detection/
 │   │   └── predict.py          # Inferencia sobre datos nuevos
 │   ├── unsupervised/            # Módulo 2: detección no supervisada de anomalías
 │   │   ├── loader.py            # Datos de entrenamiento (solo normales) y prueba (mixta)
-│   │   ├── models.py            # Isolation Forest y Local Outlier Factor
+│   │   ├── models.py            # Isolation Forest, LOF, baseline estadístico MAD-z
+│   │   ├── autoencoder.py       # Autoencoder PyTorch (activaciones ReLU/GELU/Swish)
+│   │   ├── metrics_store.py     # Persistencia de métricas comparativas (DuckDB)
 │   │   └── train_unsupervised.py  # Entrenamiento, evaluación (Precision@k) y gráficas
 │   └── utils/                  # Funciones auxiliares compartidas
-├── tests/                 # Pruebas unitarias (pytest) para preprocessing y build_features
+├── tests/                 # Pruebas unitarias (pytest): preprocessing, features, baseline
+│                           # MAD, autoencoder, metrics store
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -118,13 +124,30 @@ El Módulo 1 entrena con fraude ya etiquetado, así que solo puede reconocer pat
 
 El tamaño de la muestra de entrenamiento se mantiene acotado (30k filas) a propósito: Local Outlier Factor en modo *novelty* necesita construir un índice de vecinos y consultarlo por cada predicción, algo que no escala a los 6.3M de filas del dataset completo.
 
-**Modelos** (`src/unsupervised/models.py`):
+**Modelos** (`src/unsupervised/models.py`, `src/unsupervised/autoencoder.py`):
 - **Isolation Forest** (`sklearn.ensemble.IsolationForest`) — aísla puntos con particiones aleatorias; las anomalías requieren menos particiones para quedar aisladas.
 - **Local Outlier Factor** (`sklearn.neighbors.LocalOutlierFactor`, `novelty=True`) — compara la densidad local de un punto contra la de sus vecinos más cercanos.
+- **Baseline estadístico MAD-z** (`MADBaseline`) — baseline no iterativo: memoriza la mediana y la Median Absolute Deviation (MAD) por feature al ajustarse, y puntúa cada fila por el z-score robusto máximo entre sus features. Robusto a la cola pesada de montos/saldos, a diferencia de un z-score de media/desviación estándar clásico.
+- **Autoencoder** (`src/unsupervised/autoencoder.py`, PyTorch) — encoder/decoder simétrico totalmente conectado con cuello de botella central, entrenado solo con transacciones normales para minimizar el MSE de reconstrucción; el anomaly score es el propio error de reconstrucción (`reconstruction_error()`), más alto = más anómalo. Entrenado y comparado con tres funciones de activación sobre la misma arquitectura — **ReLU**, **GELU** y **Swish** (`nn.SiLU`) — para ilustrar su efecto en la calidad de la reconstrucción sobre este dataset tabular.
 
-Ambos exponen un **Anomaly Score** continuo homogéneo (`anomaly_score()`, valores más altos = más anómalo) derivado de `score_samples`, sobre features escaladas con `RobustScaler` (ajustado solo con datos de entrenamiento) por la fuerte asimetría de montos y saldos.
+Las cuatro familias exponen un **Anomaly Score** continuo homogéneo (valores más altos = más anómalo), sobre features escaladas con `RobustScaler` (ajustado solo con datos de entrenamiento) por la fuerte asimetría de montos y saldos.
 
-**Evaluación** (`src/unsupervised/train_unsupervised.py`): PR-AUC y Precision@k/Recall@k (k = 50, 100, 200 — "de las k transacciones más anómalas señaladas, ¿cuántas son fraude real?", la pregunta que le importa a un analista con capacidad de revisión limitada). Genera `data/processed/figures/unsupervised_scores.png` (distribución del Anomaly Score por clase) y `data/processed/figures/unsupervised_pr_curve.png` (curva Precision-Recall comparativa), y serializa Isolation Forest junto con su `RobustScaler` en `data/processed/isolation_forest.joblib`.
+**Evaluación** (`src/unsupervised/train_unsupervised.py`): PR-AUC y Precision@k/Recall@k (k = 50, 100, 200 — "de las k transacciones más anómalas señaladas, ¿cuántas son fraude real?", la pregunta que le importa a un analista con capacidad de revisión limitada). Genera `data/processed/figures/unsupervised_scores.png` (distribución del Anomaly Score por clase, Isolation Forest / LOF / baseline MAD), `data/processed/figures/unsupervised_pr_curve.png` (curva Precision-Recall comparativa entre todos los modelos) y `data/processed/figures/autoencoder_activations.png` (PR-AUC por función de activación). Serializa Isolation Forest junto con su `RobustScaler` en `data/processed/isolation_forest.joblib`, y persiste PR-AUC/Precision@k/Recall@k por modelo y por corrida en un archivo DuckDB local (`data/processed/metrics.duckdb`, vía `src/unsupervised/metrics_store.py`) para comparar entre corridas.
+
+### Comparación de modelos (Módulo 2)
+
+| Modelo | Tipo | Anomaly score | Notas |
+|---|---|---|---|
+| Isolation Forest | Ensamble basado en árboles | `-score_samples` | Maneja bien fronteras no lineales, rápido de entrenar |
+| Local Outlier Factor | Basado en densidad (modo novelty) | `-score_samples` | Sensible a variaciones de densidad local |
+| Baseline MAD-z | Estadístico, no iterativo | z-score robusto máximo | Sin hiperparámetros, rápido, interpretable por feature |
+| Autoencoder (ReLU / GELU / Swish) | Deep learning (PyTorch) | MSE de reconstrucción | Captura interacciones no lineales; la activación afecta la calidad de reconstrucción |
+
+Las métricas PR-AUC, Precision@k y Recall@k de cada modelo/corrida se persisten en `data/processed/metrics.duckdb` (consultable directamente con `duckdb.connect(...)` o con `src.unsupervised.metrics_store.load_latest_metrics()`) — los números exactos dependen de la descarga de PaySim y no se codifican aquí, consistente con la nota honesta sobre validación de más arriba.
+
+![Distribución de anomaly scores](data/processed/figures/unsupervised_scores.png)
+![Curva Precision-Recall](data/processed/figures/unsupervised_pr_curve.png)
+![Comparación de activaciones del autoencoder](data/processed/figures/autoencoder_activations.png)
 
 ## Stack técnico
 
