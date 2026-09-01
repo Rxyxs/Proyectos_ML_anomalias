@@ -1,3 +1,5 @@
+> **Este repo fue reemplazado por [fraud-detection-techniques-lab](https://github.com/Rxyxs/fraud-detection-techniques-lab)**, que cubre el mismo problema de detección de fraude estilo PaySim con técnicas más actuales. Se mantiene archivado por historial.
+
 [ 🇺🇸 [Read in English](README.md) ] | [ 🇨🇱 Español ]
 
 # Bank Anomaly Detection
