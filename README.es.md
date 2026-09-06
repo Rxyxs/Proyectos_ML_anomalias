@@ -1,13 +1,11 @@
-> **Este repo fue reemplazado por [fraud-detection-techniques-lab](https://github.com/Rxyxs/fraud-detection-techniques-lab)**, que cubre el mismo problema de detección de fraude estilo PaySim con técnicas más actuales. Se mantiene archivado por historial.
-
 [ 🇺🇸 [Read in English](README.md) ] | [ 🇨🇱 Español ]
 
 # Bank Anomaly Detection
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-Isolation%20Forest%20%7C%20LOF-F7931E?logo=scikitlearn&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-11%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-20%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-53%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -16,7 +14,12 @@ Sistema de detección de fraude y anomalías en transacciones bancarias móviles
 
 ## Nota honesta sobre validación
 
-Este README documenta la arquitectura, el diseño y el razonamiento del proyecto en detalle, pero **la corrida completa del pipeline (Módulo 1 supervisado y Módulo 2 no supervisado) requiere descargar el dataset PaySim vía `kagglehub`, que a su vez requiere credenciales de Kaggle configuradas** — no disponibles en el entorno donde se preparó esta actualización de documentación. Lo que sí se verificó directamente en este entorno: **20/20 tests unitarios pasando** (`pytest tests/`, que cubren `preprocessing.py` y `build_features.py` con datos sintéticos, sin necesitar la descarga real). Las métricas de modelo (ROC-AUC, PR-AUC, Precision@k) mencionadas en el código no se reportan aquí como números porque no fueron re-ejecutadas en esta sesión — quien clone el repo y configure sus propias credenciales de Kaggle puede generarlas siguiendo los pasos de Uso más abajo.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2 y `python -m src.unsupervised.benchmark` para el Módulo 3, más **53/53 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+
+Dos advertencias necesarias para leer bien las métricas:
+
+- **El conjunto de prueba está enriquecido a propósito.** Contiene 50.000 transacciones normales más *todas* las 8.213 fraudulentas disponibles, o sea un 14,1% de fraude frente al ~0,13% real de PaySim. Es la única forma de tener suficientes anomalías para medir Precision@k con estabilidad, pero implica que estos PR-AUC **no son trasladables** a la prevalencia de producción: en el mundo real la precisión sería sustancialmente menor con el mismo modelo.
+- **El Módulo 1 (supervisado) no se re-ejecutó en esta sesión.** Sus métricas no se reportan como números aquí; quien clone el repo puede generarlas con `python -m src.models.train`.
 
 ## Objetivo
 
@@ -33,6 +36,9 @@ flowchart LR
     C --> F["train_unsupervised.py<br/>Isolation Forest / LOF / MAD-z / Autoencoder, solo normales"]
     F --> G[(isolation_forest.joblib<br/>+ RobustScaler)]
     F --> H[(metrics.duckdb<br/>PR-AUC / Precision@k por corrida)]
+    C --> I["benchmark.py<br/>11 detectores + 3 ensembles, mismo split"]
+    I --> H
+    I --> J[/"ranking + correlación<br/>+ curvas PR"/]
 ```
 
 El proyecto sigue una arquitectura modular que separa claramente la ingesta de datos, el preprocesamiento, la ingeniería de características y el modelado, favoreciendo la reproducibilidad y la testabilidad del código:
@@ -44,7 +50,8 @@ bank-anomaly-detection/
 │   └── processed/        # Datos transformados listos para modelado (no versionados)
 ├── notebooks/
 │   ├── 01_eda_paysim.ipynb                     # Análisis exploratorio del dataset PaySim
-│   └── 02_unsupervised_anomaly_detection.ipynb # Módulo 2: detección de fraude zero-day
+│   ├── 02_unsupervised_anomaly_detection.ipynb # Módulo 2: detección de fraude zero-day
+│   └── 03_benchmark_familias_anomalias.ipynb   # Módulo 3: benchmark de familias + ensembles
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -55,15 +62,19 @@ bank-anomaly-detection/
 │   │   ├── train.py            # Entrenamiento, comparación y selección de modelos
 │   │   ├── visualize.py        # Curvas ROC/PR y matrices de confusión comparativas
 │   │   └── predict.py          # Inferencia sobre datos nuevos
-│   ├── unsupervised/            # Módulo 2: detección no supervisada de anomalías
+│   ├── unsupervised/            # Módulos 2 y 3: detección no supervisada de anomalías
 │   │   ├── loader.py            # Datos de entrenamiento (solo normales) y prueba (mixta)
 │   │   ├── models.py            # Isolation Forest, LOF, baseline estadístico MAD-z
 │   │   ├── autoencoder.py       # Autoencoder PyTorch (activaciones ReLU/GELU/Swish)
+│   │   ├── families.py          # Módulo 3: PCA, GMM, Mahalanobis (MCD), kNN, OC-SVM, HBOS, ECOD
+│   │   ├── ensemble.py          # Módulo 3: combinación de scores (rangos, z, máximo z)
+│   │   ├── benchmark.py         # Módulo 3: comparación de las 11 familias en el mismo split
 │   │   ├── metrics_store.py     # Persistencia de métricas comparativas (DuckDB)
+│   │   ├── style.py             # Paleta y estilo compartido de las figuras
 │   │   └── train_unsupervised.py  # Entrenamiento, evaluación (Precision@k) y gráficas
 │   └── utils/                  # Funciones auxiliares compartidas
 ├── tests/                 # Pruebas unitarias (pytest): preprocessing, features, baseline
-│                           # MAD, autoencoder, metrics store
+│                           # MAD, autoencoder, metrics store, familias, ensembles
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -116,6 +127,14 @@ Detección no supervisada de anomalías (Módulo 2):
 python -m src.unsupervised.train_unsupervised
 ```
 
+Benchmark comparativo de familias de detectores (Módulo 3):
+
+```bash
+python -m src.unsupervised.benchmark
+```
+
+Entrena las 11 familias sobre el mismo split y escalado, construye los tres ensembles encima de sus scores, imprime la tabla comparativa con métricas y tiempos, reporta los pares de detectores redundantes y guarda ranking, curvas PR y matriz de correlación en `data/processed/figures/`, además de una fila por detector en la tabla `benchmark_metrics` de `data/processed/metrics.duckdb`.
+
 ## Módulo 2: Detección de fraude desconocido / zero-day (no supervisado)
 
 El Módulo 1 entrena con fraude ya etiquetado, así que solo puede reconocer patrones parecidos a fraude que ya ocurrió antes. El Módulo 2 cubre el caso complementario: un esquema de fraude genuinamente nuevo ("zero-day") no se parece a nada visto en el entrenamiento, y un modelo supervisado no tiene por qué detectarlo. El enfoque aquí es aprender únicamente la forma de lo normal y señalar como anómalo cualquier caso que se aleje de ese patrón, sin usar una sola etiqueta de fraude durante el ajuste.
@@ -145,11 +164,86 @@ Las cuatro familias exponen un **Anomaly Score** continuo homogéneo (valores m�
 | Baseline MAD-z | Estadístico, no iterativo | z-score robusto máximo | Sin hiperparámetros, rápido, interpretable por feature |
 | Autoencoder (ReLU / GELU / Swish) | Deep learning (PyTorch) | MSE de reconstrucción | Captura interacciones no lineales; la activación afecta la calidad de reconstrucción |
 
-Las métricas PR-AUC, Precision@k y Recall@k de cada modelo/corrida se persisten en `data/processed/metrics.duckdb` (consultable directamente con `duckdb.connect(...)` o con `src.unsupervised.metrics_store.load_latest_metrics()`) — los números exactos dependen de la descarga de PaySim y no se codifican aquí, consistente con la nota honesta sobre validación de más arriba.
+### Resultados medidos (Módulo 2)
+
+| Modelo | PR-AUC | Precision@50 | Precision@100 | Precision@200 |
+|---|---|---|---|---|
+| Local Outlier Factor | **0.802** | 1.000 | 1.000 | 1.000 |
+| Autoencoder (ReLU) | 0.581 | 0.960 | 0.970 | 0.975 |
+| Autoencoder (Swish) | 0.574 | 0.980 | 0.990 | 0.995 |
+| Autoencoder (GELU) | 0.573 | 1.000 | 1.000 | 1.000 |
+| Isolation Forest | 0.549 | 0.440 | 0.550 | 0.640 |
+| Baseline MAD-z | 0.140 | 0.240 | 0.140 | 0.100 |
+
+Local Outlier Factor domina claramente con este conjunto de features. Las tres activaciones del autoencoder quedan a menos de 0.01 de PR-AUC entre sí (0.581 / 0.574 / 0.573): sobre datos tabulares de 15 columnas, la elección de activación es marginal comparada con la elección de familia de detector — el Módulo 3 desarrolla ese punto.
+
+PR-AUC, Precision@k y Recall@k de cada modelo/corrida se persisten en `data/processed/metrics.duckdb` (consultable con `duckdb.connect(...)` o `src.unsupervised.metrics_store.load_latest_metrics()`).
 
 ![Distribución de anomaly scores](data/processed/figures/unsupervised_scores.png)
 ![Curva Precision-Recall](data/processed/figures/unsupervised_pr_curve.png)
 ![Comparación de activaciones del autoencoder](data/processed/figures/autoencoder_activations.png)
+
+## Módulo 3: Benchmark de familias de detección (no supervisado)
+
+El Módulo 2 cubre tres enfoques más el autoencoder. El Módulo 3 cierra el mapa: agrega las familias que faltaban (`src/unsupervised/families.py`), las compara a todas en el mismo split con el mismo escalado (`src/unsupervised/benchmark.py`) y prueba si combinarlas mejora algo (`src/unsupervised/ensemble.py`).
+
+La motivación no es acumular modelos. Sin etiquetas no se puede elegir el mejor detector *antes* de desplegarlo, así que las preguntas accionables son otras dos: **qué familias son realmente complementarias** (si dos ordenan las transacciones casi igual, tener las dos no aporta nada) y **cuánto cuesta cada punto de PR-AUC** (en producción el scoring corre por transacción y el ajuste una vez al día, así que un detector lento de entrenar pero rápido de puntuar es viable — y al revés no).
+
+### Las siete familias agregadas
+
+| Detector | Familia | Qué anomalía detecta bien |
+|---|---|---|
+| **PCA (reconstrucción)** | Reconstrucción lineal | Filas fuera del subespacio principal — es la **ablación** del autoencoder |
+| **Gaussian Mixture** | Densidad paramétrica | Huecos de baja probabilidad entre modos de la distribución |
+| **Mahalanobis robusto (MCD)** | Covarianza robusta | Correlaciones rotas entre features, invisibles columna a columna |
+| **kNN (k-ésima distancia)** | Distancia global | Puntos lejos de cualquier vecindario denso |
+| **One-Class SVM (Nyström)** | Frontera con kernel | Filas fuera de la envolvente aprendida de lo normal |
+| **HBOS** | Histogramas por feature | Valores raros en columnas individuales; score descomponible por feature |
+| **ECOD** | Colas de la CDF empírica | Colas extremas, sin un solo hiperparámetro que ajustar |
+
+`HBOS` y `ECOD` están implementados desde cero (coste lineal, sin dependencias extra); el resto se apoya en scikit-learn. El `OneClassSVM` exacto es O(n²)–O(n³) y no termina en un set de 30k filas, así que se usa la aproximación de kernel de Nyström + `SGDOneClassSVM`, que resuelve el mismo problema en tiempo lineal.
+
+Los tres **ensembles** resuelven el problema de que los scores viven en escalas incompatibles (una distancia de Mahalanobis no se puede promediar con una log-verosimilitud): promedio de rangos, promedio de scores estandarizados, y máximo de scores estandarizados.
+
+### Resultados
+
+| Detector | Familia | PR-AUC | ROC-AUC | Precision@100 | fit (s) | score (s) |
+|---|---|---|---|---|---|---|
+| Gaussian Mixture | Densidad paramétrica | **0.807** | 0.948 | 0.99 | 5.05 | 0.13 |
+| Local Outlier Factor | Densidad local | 0.802 | 0.932 | **1.00** | 0.62 | 1.09 |
+| Mahalanobis robusto (MCD) | Covarianza robusta | 0.698 | 0.896 | 0.94 | 1.25 | 0.01 |
+| Ensemble — promedio de rangos | Ensemble | 0.643 | 0.884 | **1.00** | — | 0.02 |
+| Autoencoder (ReLU) | Reconstrucción no lineal | 0.581 | 0.850 | 0.97 | 9.61 | 0.01 |
+| kNN (k-ésima distancia) | Distancia global | 0.552 | 0.853 | 0.85 | 0.10 | 1.09 |
+| Isolation Forest | Aislamiento | 0.549 | 0.850 | 0.55 | 0.51 | 0.37 |
+| One-Class SVM (Nyström) | Frontera con kernel | 0.494 | 0.830 | 0.86 | 0.33 | 0.40 |
+| PCA (reconstrucción) | Reconstrucción lineal | 0.487 | 0.822 | 0.76 | 0.00 | 0.01 |
+| Ensemble — promedio z | Ensemble | 0.486 | 0.833 | 0.96 | — | 0.02 |
+| HBOS | Estadístico por feature | 0.480 | 0.800 | 0.59 | 0.01 | 0.02 |
+| Ensemble — máximo z | Ensemble | 0.457 | 0.837 | 0.73 | — | 0.02 |
+| ECOD | Colas de la CDF empírica | 0.273 | 0.672 | 0.52 | 0.02 | 0.11 |
+| MAD-z (baseline) | Estadístico por feature | 0.140 | 0.383 | 0.14 | 0.01 | 0.01 |
+
+![Ranking por familia](data/processed/figures/benchmark_ranking.png)
+
+**Lo que dicen los números:**
+
+- **Gaussian Mixture (0.807) y LOF (0.802) empatan arriba, pero por razones distintas.** Su correlación de Spearman es apenas 0.41, y sus curvas PR se cruzan: LOF domina entre recall 0.4 y 0.8, GMM lo supera por encima de 0.85. Cuál conviene depende de la capacidad de revisión del equipo, no del PR-AUC agregado.
+- **La ablación lineal justifica al autoencoder, pero apenas.** El autoencoder (0.581) supera al PCA (0.487) — la no-linealidad aporta ~0.09 de PR-AUC real. El costo de esos 0.09: 9.6 s de ajuste contra 0.002 s, y una dependencia de PyTorch. Ninguno de los dos se acerca a GMM.
+- **El baseline MAD-z no es solo débil, es anti-informativo** (ROC-AUC 0.383, por debajo del 0.5 del azar). Mirar cada columna por separado falla aquí porque el fraude de PaySim es un vaciado completo del saldo de origen: cada valor individual queda dentro del rango observado, mientras que las colas pesadas de las transacciones legítimas sí producen z-scores extremos. Es exactamente el argumento a favor de los métodos multivariados — y la razón de incluir Mahalanobis (0.698), que ve la misma información pero con la covarianza completa.
+- **Los ensembles no ganan, y eso también es un resultado.** El mejor (promedio de rangos, 0.643) queda por debajo de GMM y LOF: promediar 11 detectores donde 8 son mediocres arrastra hacia abajo a los dos buenos. Un ensemble ayuda cuando sus miembros son de calidad comparable, no cuando hay una diferencia de 0.67 de PR-AUC entre el mejor y el peor. Con una excepción operativa relevante: **Precision@100 = 1.00** para el promedio de rangos — en la cabeza del ranking sí hay consenso perfecto, que es justo donde mira un analista.
+
+### ¿Qué detectores son redundantes?
+
+![Correlación entre detectores](data/processed/figures/benchmark_correlation.png)
+
+Correlación de Spearman entre los *rankings* de anomalía. **Ningún par supera 0.9**: las once familias ordenan las transacciones de forma distinta, así que ninguna es descartable por redundancia pura. Los pares más parecidos son Mahalanobis ↔ kNN (0.88) y Mahalanobis ↔ Autoencoder (0.87); los más complementarios, MAD-z ↔ LOF (−0.04) y MAD-z ↔ GMM (−0.42).
+
+![Curvas Precision-Recall](data/processed/figures/benchmark_pr_curve.png)
+
+### Costo computacional
+
+Los detectores de coste lineal (HBOS, ECOD, MAD-z, PCA) puntúan las 58.213 filas de prueba en centésimas de segundo y no mantienen nada en memoria más allá de unos vectores por feature. Los basados en distancias (LOF, kNN) pagan ~1.1 s porque cada predicción consulta un índice de vecinos contra las 30.000 filas de entrenamiento — el factor que decide si son viables en un flujo transaccional en línea. El autoencoder invierte la relación: es el más lento de ajustar (9.6 s) y de los más rápidos de puntuar (0.01 s), que es el perfil correcto para producción.
 
 ## Stack técnico
 
@@ -158,6 +252,9 @@ Las métricas PR-AUC, Precision@k y Recall@k de cada modelo/corrida se persisten
 - **xgboost** — modelo de gradient boosting para clasificación de fraude
 - **imbalanced-learn** — técnicas de resampling (SMOTE, undersampling) para el desbalance de clases
 - **matplotlib / seaborn** — visualización exploratoria
+- **pytorch** — Autoencoder para detección de anomalías por error de reconstrucción
+- **scipy** — correlación de Spearman y rangos para los ensembles de detectores
+- **duckdb** — persistencia local de métricas comparativas entre corridas
 - **pytest** — pruebas unitarias
 - **kagglehub** — descarga programática del dataset desde Kaggle
 

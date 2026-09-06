@@ -19,6 +19,7 @@ from src.unsupervised.autoencoder import reconstruction_error, train_autoencoder
 from src.unsupervised.loader import get_unsupervised_data
 from src.unsupervised.metrics_store import save_metrics
 from src.unsupervised.models import anomaly_score, build_isolation_forest, build_lof, build_mad_baseline
+from src.unsupervised.style import INK_MUTED, INK_PRIMARY, INK_SECONDARY, style_axes
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "isolation_forest.joblib"
@@ -45,10 +46,6 @@ MODEL_COLORS = {
     "autoencoder_gelu": "#9c27b0",
     "autoencoder_swish": "#e91e63",
 }
-INK_PRIMARY = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRIDLINE = "#e1e0d9"
 
 
 def precision_recall_at_k(y_true: pd.Series, scores: np.ndarray, k: int) -> tuple[float, float]:
@@ -67,16 +64,6 @@ def evaluate(y_test: pd.Series, scores: np.ndarray) -> dict:
     pr_auc = average_precision_score(y_test, scores)
     at_k = {k: precision_recall_at_k(y_test, scores, k) for k in K_VALUES}
     return {"pr_auc": pr_auc, "precision_recall_at_k": at_k}
-
-
-def _style_axes(ax) -> None:
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color(INK_MUTED)
-    ax.spines["bottom"].set_color(INK_MUTED)
-    ax.tick_params(colors=INK_SECONDARY)
-    ax.grid(True, color=GRIDLINE, linewidth=0.8)
-    ax.set_axisbelow(True)
 
 
 def plot_score_distributions(results: dict, y_test: pd.Series, output_path: Path = SCORES_FIGURE_PATH):
@@ -105,7 +92,7 @@ def plot_score_distributions(results: dict, y_test: pd.Series, output_path: Path
         ax.set_xlabel("Anomaly score (más alto = más anómalo)" + (" — escala log" if use_log else ""), color=INK_SECONDARY)
         ax.set_ylabel("Densidad", color=INK_SECONDARY)
         ax.set_title(MODEL_LABELS.get(name, name), color=INK_PRIMARY, fontsize=12)
-        _style_axes(ax)
+        style_axes(ax)
         ax.legend(frameon=False)
 
     fig.suptitle("Distribución del Anomaly Score — normal vs. fraude", color=INK_PRIMARY, fontsize=13)
@@ -135,7 +122,7 @@ def plot_pr_curve(results: dict, y_test: pd.Series, output_path: Path = PR_CURVE
     ax.set_xlabel("Recall", color=INK_SECONDARY)
     ax.set_ylabel("Precision", color=INK_SECONDARY)
     ax.set_title("Curva Precision-Recall — modelos no supervisados", color=INK_PRIMARY, fontsize=13)
-    _style_axes(ax)
+    style_axes(ax)
     ax.legend(frameon=False, loc="upper right")
     fig.tight_layout()
 
@@ -204,7 +191,7 @@ if __name__ == "__main__":
     ax.bar(ae_labels, ae_scores, color=[MODEL_COLORS[n] for n in ae_names])
     ax.set_ylabel("PR-AUC", color=INK_SECONDARY)
     ax.set_title("Autoencoder — PR-AUC por función de activación", color=INK_PRIMARY, fontsize=12)
-    _style_axes(ax)
+    style_axes(ax)
     fig.tight_layout()
     ACTIVATION_FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(ACTIVATION_FIGURE_PATH, dpi=150)
