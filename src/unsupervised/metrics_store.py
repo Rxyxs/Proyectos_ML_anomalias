@@ -68,8 +68,15 @@ def load_latest_metrics(db_path: Path = DB_PATH):
         con.close()
 
 
+BENCHMARK_TABLE = "benchmark_metrics"
+
+# El detector secuencial del modulo 4 puntua CUENTAS, no transacciones: va en su propia
+# tabla para que un JOIN o un ORDER BY descuidado no termine comparando dos problemas
+# distintos como si fueran el mismo ranking.
+SEQUENCE_TABLE = "sequence_metrics"
+
 BENCHMARK_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS benchmark_metrics (
+CREATE TABLE IF NOT EXISTS {table} (
     run_ts TIMESTAMP,
     model_name VARCHAR,
     family VARCHAR,
@@ -87,18 +94,19 @@ CREATE TABLE IF NOT EXISTS benchmark_metrics (
 """
 
 
-def save_benchmark_metrics(results: dict, model_labels: dict | None = None, db_path: Path = DB_PATH) -> None:
-    """Persiste el benchmark del módulo 3 en su propia tabla.
+def _save_metrics_to(table: str, results: dict, model_labels: dict | None, db_path: Path) -> None:
+    """Inserta una fila por modelo en `table`, creándola si no existe.
 
-    Va aparte de `unsupervised_metrics` porque agrega familia, ROC-AUC y tiempos de ajuste
-    y scoring: mezclarlo en la tabla del módulo 2 obligaría a migrar los datos históricos.
+    Las tablas de los módulos 3 y 4 van aparte de `unsupervised_metrics` porque agregan
+    familia, ROC-AUC y tiempos de ajuste y scoring: mezclarlas en la tabla del módulo 2
+    obligaría a migrar los datos históricos.
 
     `results` sigue el formato producido por `benchmark.evaluate_all`.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(db_path))
     try:
-        con.execute(BENCHMARK_TABLE_SQL)
+        con.execute(BENCHMARK_TABLE_SQL.format(table=table))
         run_ts = dt.datetime.now()
         labels = model_labels or {}
         for name, res in results.items():
@@ -107,7 +115,7 @@ def save_benchmark_metrics(results: dict, model_labels: dict | None = None, db_p
             p100, r100 = at_k.get(100, (None, None))
             p200, r200 = at_k.get(200, (None, None))
             con.execute(
-                "INSERT INTO benchmark_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     run_ts,
                     labels.get(name, name),
@@ -123,17 +131,36 @@ def save_benchmark_metrics(results: dict, model_labels: dict | None = None, db_p
         con.close()
 
 
-def load_latest_benchmark(db_path: Path = DB_PATH):
-    """Devuelve la última corrida del benchmark como DataFrame, ordenada por PR-AUC."""
+def save_benchmark_metrics(results: dict, model_labels: dict | None = None, db_path: Path = DB_PATH) -> None:
+    """Persiste métricas de detectores a nivel de transacción (módulos 3 y 4)."""
+    _save_metrics_to(BENCHMARK_TABLE, results, model_labels, db_path)
+
+
+def save_sequence_metrics(results: dict, model_labels: dict | None = None, db_path: Path = DB_PATH) -> None:
+    """Persiste métricas del detector secuencial, que evalúa cuentas en vez de transacciones."""
+    _save_metrics_to(SEQUENCE_TABLE, results, model_labels, db_path)
+
+
+def _load_latest_from(table: str, db_path: Path):
     con = duckdb.connect(str(db_path))
     try:
-        con.execute(BENCHMARK_TABLE_SQL)
+        con.execute(BENCHMARK_TABLE_SQL.format(table=table))
         return con.execute(
-            """
-            SELECT * FROM benchmark_metrics
-            WHERE run_ts = (SELECT max(run_ts) FROM benchmark_metrics)
+            f"""
+            SELECT * FROM {table}
+            WHERE run_ts = (SELECT max(run_ts) FROM {table})
             ORDER BY pr_auc DESC
             """
         ).df()
     finally:
         con.close()
+
+
+def load_latest_benchmark(db_path: Path = DB_PATH):
+    """Devuelve la última corrida del benchmark como DataFrame, ordenada por PR-AUC."""
+    return _load_latest_from(BENCHMARK_TABLE, db_path)
+
+
+def load_latest_sequence_metrics(db_path: Path = DB_PATH):
+    """Devuelve la última corrida del detector secuencial (métricas por cuenta)."""
+    return _load_latest_from(SEQUENCE_TABLE, db_path)

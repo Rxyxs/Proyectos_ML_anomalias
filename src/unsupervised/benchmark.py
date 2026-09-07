@@ -1,8 +1,12 @@
 """Módulo 3 — benchmark comparativo de todas las familias de detección de anomalías.
 
 Entrena, en el mismo split y con el mismo escalado, los detectores del módulo 2
-(Isolation Forest, LOF, MAD-z, autoencoder) junto con las siete familias complementarias
-de `families.py`, y encima de todos ellos los ensembles de `ensemble.py`.
+(Isolation Forest, LOF, MAD-z, autoencoder), las siete familias complementarias de
+`families.py` y los dos modelos profundos de una clase de `src/deep/one_class.py` (VAE y
+Deep SVDD), y encima de todos ellos los ensembles de `ensemble.py`.
+
+El detector secuencial del módulo 4 queda deliberadamente fuera: puntúa cuentas, no
+transacciones, así que no comparte universo con esta tabla.
 
 La pregunta que responde no es "cuál es el mejor modelo" sino dos más útiles para decidir
 qué desplegar:
@@ -31,6 +35,7 @@ from scipy.stats import spearmanr
 from sklearn.metrics import precision_recall_curve, roc_auc_score
 from sklearn.preprocessing import RobustScaler
 
+from src.deep.one_class import build_deep_detectors
 from src.unsupervised.autoencoder import reconstruction_error, train_autoencoder
 from src.unsupervised.ensemble import build_ensembles
 from src.unsupervised.families import build_detectors
@@ -59,6 +64,8 @@ MODEL_FAMILY = {
     "ocsvm_nystroem": "Frontera con kernel",
     "pca_reconstruction": "Reconstrucción",
     "autoencoder": "Reconstrucción",
+    "vae": "Densidad profunda",
+    "deep_svdd": "Una clase profunda",
     "ensemble_rank_avg": "Ensemble",
     "ensemble_z_avg": "Ensemble",
     "ensemble_z_max": "Ensemble",
@@ -73,6 +80,8 @@ FAMILY_COLORS = {
     "Densidad paramétrica": "#9c27b0",
     "Frontera con kernel": "#f9a825",
     "Reconstrucción": "#4caf50",
+    "Densidad profunda": "#7e57c2",
+    "Una clase profunda": "#0097a7",
     "Ensemble": "#c2185b",
 }
 
@@ -88,6 +97,8 @@ MODEL_LABELS = {
     "ocsvm_nystroem": "One-Class SVM (Nyström)",
     "hbos": "HBOS",
     "ecod": "ECOD",
+    "vae": "VAE (ELBO)",
+    "deep_svdd": "Deep SVDD",
     "ensemble_rank_avg": "Ensemble — promedio de rangos",
     "ensemble_z_avg": "Ensemble — promedio z",
     "ensemble_z_max": "Ensemble — máximo z",
@@ -101,6 +112,7 @@ def run_detectors(X_train: np.ndarray, X_test: np.ndarray) -> dict[str, dict]:
         "lof": build_lof(),
         "mad_baseline": build_mad_baseline(),
         **build_detectors(),
+        **build_deep_detectors(),
     }
 
     outputs: dict[str, dict] = {}
