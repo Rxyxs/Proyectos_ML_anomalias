@@ -126,7 +126,15 @@ def run_detectors(X_train: np.ndarray, X_test: np.ndarray) -> dict[str, dict]:
         scores = anomaly_score(detector, X_test)
         score_seconds = time.perf_counter() - start
 
-        outputs[name] = {"scores": scores, "fit_seconds": fit_seconds, "score_seconds": score_seconds}
+        # Se conserva una función de scoring atada al detector ya ajustado: el módulo 5
+        # necesita puntuar además el propio conjunto de entrenamiento para calibrar
+        # umbrales, y reajustar todo una segunda vez sería puro desperdicio.
+        outputs[name] = {
+            "scores": scores,
+            "fit_seconds": fit_seconds,
+            "score_seconds": score_seconds,
+            "score_fn": lambda X, d=detector: anomaly_score(d, X),
+        }
         print(f"  [{name}] fit {fit_seconds:.1f}s | score {score_seconds:.1f}s", flush=True)
 
     # El autoencoder no comparte la API score_samples, se ejecuta aparte con la misma
@@ -140,7 +148,12 @@ def run_detectors(X_train: np.ndarray, X_test: np.ndarray) -> dict[str, dict]:
     scores = reconstruction_error(model, X_test.astype("float32"))
     score_seconds = time.perf_counter() - start
 
-    outputs["autoencoder"] = {"scores": scores, "fit_seconds": fit_seconds, "score_seconds": score_seconds}
+    outputs["autoencoder"] = {
+        "scores": scores,
+        "fit_seconds": fit_seconds,
+        "score_seconds": score_seconds,
+        "score_fn": lambda X, m=model: reconstruction_error(m, np.asarray(X).astype("float32")),
+    }
     print(f"  [autoencoder] fit {fit_seconds:.1f}s | score {score_seconds:.1f}s", flush=True)
     return outputs
 

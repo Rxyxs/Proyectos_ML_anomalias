@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-13%20detectors-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -14,11 +14,11 @@ Fraud and anomaly detection system for mobile banking transactions, built on the
 
 ## Honest note on validation
 
-The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, and `python -m src.deep.train_deep` for Module 4, plus **86/86 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
+The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, and `python -m src.operations.run_operations` for Module 5, plus **123/123 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
 
 Two caveats you need in order to read the metrics correctly:
 
-- **The test set is deliberately enriched.** It holds 50,000 normal transactions plus *all* 8,213 available fraudulent ones — 14.1% fraud, against PaySim's real ~0.13%. That's the only way to have enough anomalies to measure Precision@k stably, but it means these PR-AUC values **do not transfer** to production prevalence: in the real world the same model would be substantially less precise.
+- **The test set is deliberately enriched.** It holds 50,000 normal transactions plus *all* 8,213 available fraudulent ones — 14.1% fraud, against PaySim's real ~0.13%. That's the only way to have enough anomalies to measure Precision@k stably, but it means these PR-AUC values **do not transfer** to production prevalence: in the real world the same model would be substantially less precise. Module 5 measures exactly that: temporal split at the real 0.23% prevalence.
 - **Module 1 (supervised) was not re-run in this session.** Its metrics aren't reported as numbers here; anyone who clones the repo can generate them with `python -m src.models.train`.
 
 ## Goal
@@ -43,6 +43,8 @@ flowchart LR
     K --> H
     I --> H
     I --> J[/"ranking + correlation<br/>+ PR curves"/]
+    C --> M["run_operations.py<br/>temporal split, threshold, cost, drift"]
+    M --> H
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -56,7 +58,8 @@ bank-anomaly-detection/
 │   ├── 01_eda_paysim.ipynb                     # Exploratory analysis of the PaySim dataset
 │   ├── 02_unsupervised_anomaly_detection.ipynb # Module 2: zero-day fraud detection
 │   ├── 03_benchmark_familias_anomalias.ipynb   # Module 3: detector-family benchmark + ensembles
-│   └── 04_modelos_profundos_y_secuencias.ipynb # Module 4: VAE, Deep SVDD and sequential detector
+│   ├── 04_modelos_profundos_y_secuencias.ipynb # Module 4: VAE, Deep SVDD and sequential detector
+│   └── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Download (kagglehub) and load the PaySim dataset
@@ -81,10 +84,15 @@ bank-anomaly-detection/
 │   │   ├── one_class.py         # VAE (ELBO) and Deep SVDD, transaction level
 │   │   ├── sequences.py         # Per-destination-account histories + GRU autoencoder
 │   │   └── train_deep.py        # Module 4 training, diagnostics, and plots
+│   ├── operations/              # Module 5: from score to operational decision
+│   │   ├── temporal.py          # Temporal split, per-period evaluation, drift
+│   │   ├── thresholds.py        # Quantile, capacity, and cost-optimal thresholds
+│   │   ├── costs.py             # Money metrics and break-even review cost
+│   │   └── run_operations.py    # Full Module 5 run and its plots
 │   └── utils/                  # Shared helper functions
 ├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
 │                           # autoencoder, metrics store, families, ensembles,
-│                           # deep models, sequences
+│                           # deep models, sequences, thresholds, costs, temporal
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -152,6 +160,14 @@ python -m src.deep.train_deep
 ```
 
 Trains the VAE and Deep SVDD on the same split as Module 3, plus the GRU autoencoder over destination-account histories. Prints the truncation coverage and the per-step error aggregation comparison — the two diagnostics that make the sequential detector's result interpretable — and saves metrics to tables separated by unit of analysis.
+
+Operations: threshold, cost, and temporal validation (Module 5):
+
+```bash
+python -m src.operations.run_operations
+```
+
+Retrains all 13 detectors on a **temporal** split at real prevalence, computes the break-even review cost, compares the PR-AUC ranking against the money-saved ranking, measures how far the actual false-positive rate strays from the one the threshold promised, and evaluates day-by-day degradation while filtering out periods without enough volume.
 
 ## Module 2: Unknown / zero-day fraud detection (unsupervised)
 
@@ -326,6 +342,83 @@ All within noise, all barely above chance. Not that either.
 With both ruled out, the dataset explanation is what's left: **PaySim injects fraud with a fixed rule and picks the destination account without modeling mule behavior**, so account histories don't carry the temporal pattern the model is looking for. That's a limitation of the simulator, not of the approach. On real AML transactions — where mule accounts do have a behavioral signature — this is the family that would contribute most, and the architecture is built and tested for that data.
 
 Metrics go to **separate tables** in `data/processed/metrics.duckdb`: `benchmark_metrics` for transaction level, `sequence_metrics` for account level. The separation is structural on purpose, so a careless `ORDER BY` can't end up comparing two different problems.
+
+## Module 5: From ranking to operation — threshold, money, and aging
+
+Modules 2 to 4 leave 13 detectors and a PR-AUC ranking. None of that is deployable: in production no test set arrives to be sorted — a transaction arrives and you have to say *yes* or *no*. This module covers what lies between "I have a score" and "I have a system", and it starts by fixing a methodological weakness in the earlier modules.
+
+| | Modules 2-4 | Module 5 |
+|---|---|---|
+| Split | random, over chronologically ordered data | **temporal**: train on the past, evaluate on the future |
+| Test prevalence | 14.1% (enriched) | **0.23%** (the period's real rate) |
+| What's measured | PR-AUC, Precision@k | threshold, alerts per day, **money** |
+
+The cut falls at `step=323`: 30,000 early normals to fit, 30,000 more held out to calibrate, and 300,000 later transactions to evaluate. The test set is **not enriched**, because this module computes thresholds, alert volumes, and money: on a set enriched to 14% those quantities would mean nothing.
+
+### Results
+
+| Detector | PR-AUC | ROC-AUC | Recall (count) | Recall (amount) | Optimal net savings | Actual FPR when promising 1% |
+|---|---|---|---|---|---|---|
+| Deep SVDD | **0.368** | 0.917 | 0.387 | 0.810 | 833 M | **0.544** |
+| Gaussian Mixture | 0.263 | **0.961** | **0.464** | **0.931** | **944 M** | 0.014 |
+| Robust Mahalanobis (MCD) | 0.159 | 0.893 | 0.348 | 0.871 | 912 M | 0.012 |
+| kNN (k-th distance) | 0.056 | 0.867 | 0.227 | 0.749 | 854 M | 0.011 |
+| VAE (ELBO) | 0.052 | 0.776 | 0.215 | 0.720 | 813 M | 0.012 |
+| Autoencoder (ReLU) | 0.046 | 0.883 | 0.199 | 0.710 | 868 M | 0.018 |
+| One-Class SVM (Nyström) | 0.022 | 0.853 | 0.230 | 0.744 | 815 M | 0.011 |
+| PCA (reconstruction) | 0.017 | 0.840 | 0.102 | 0.508 | 805 M | 0.020 |
+| Isolation Forest | 0.016 | 0.798 | 0.075 | 0.348 | 792 M | 0.019 |
+| HBOS | 0.006 | 0.671 | 0.067 | 0.246 | 636 M | 0.015 |
+| Local Outlier Factor | 0.005 | 0.767 | 0.000 | 0.000 | 529 M | 0.428 |
+| ECOD | 0.005 | 0.649 | 0.025 | 0.147 | 546 M | 0.127 |
+| MAD-z (baseline) | 0.002 | 0.391 | 0.003 | 0.019 | 18 M | 0.009 |
+
+![Net savings and value-weighted recall](data/processed/figures/operations_savings.png)
+
+**What the numbers say:**
+
+- **The best ranker is not the one that saves the most money.** Deep SVDD leads PR-AUC (0.368) but Gaussian Mixture recovers more money (944 M against 833 M) and catches 93% of the defrauded amount against 81%. With 10% of frauds concentrating 50.2% of the amount, ranking well by count and ranking well by money are two different things. The figure adds a caveat: at very small budgets (under ~300 alerts) Deep SVDD recovers more money, and GMM only overtakes beyond that — the answer depends on how much the team can review.
+- **PR-AUC and ROC-AUC contradict each other, and that's not a bug.** Deep SVDD wins on PR-AUC and loses on ROC-AUC (0.917 against 0.961). PR-AUC rewards the head of the ranking; ROC-AUC looks at the whole ordering. Which one matters depends on whether the team reviews the top 100 alerts or sweeps a threshold.
+- **Local Outlier Factor collapses.** It was second in Module 3; here it lands at zero recall at the operating point, with negative savings. Its ROC-AUC falls from 0.932 to 0.767 — the only detector that genuinely breaks under temporal validation.
+
+### Comparing against Module 3 without cheating
+
+It's tempting to put this table's PR-AUC next to Module 3's (GMM: 0.807 → 0.263) and announce a collapse. **That would be wrong:** PR-AUC depends on prevalence, and prevalence went from 14.1% to 0.23%. Much of that drop is purely mechanical.
+
+What is comparable is ROC-AUC, which doesn't depend on prevalence. There the picture is different: most detectors hold or improve (GMM 0.948 → 0.961, Deep SVDD 0.860 → 0.917, PCA 0.822 → 0.840), and only two degrade markedly — **LOF (0.932 → 0.767) and HBOS (0.800 → 0.671)**. The random split wasn't inflating everything equally: it was selectively inflating the local-density detectors.
+
+### The threshold: promised versus delivered
+
+`quantile_threshold` is the only rule applicable on deployment day: since fitting uses only normal transactions, the (1-α) quantile should leave out a fraction α of legitimate traffic. **α is the promised false-positive rate.**
+
+![Threshold calibration](data/processed/figures/operations_calibration.png)
+
+GMM, Mahalanobis, and kNN land on the diagonal: they promise 1% and deliver between 1.1% and 1.4%. **Deep SVDD promises 0.1% and delivers 35%** — three orders of magnitude. The best detector by PR-AUC is, as it stands, undeployable.
+
+The natural hypothesis is overfitting: Deep SVDD *explicitly minimizes* distance-to-center over the training points, so its scores there would be optimistic by construction. If that were it, calibrating on the held-out normals would fix it.
+
+**It doesn't** — 0.389 from training against 0.354 from the held-out set, essentially the same (dotted and solid lines overlap in the figure). And that lack of difference is the finding: since both sets come from the early period, it rules out overfitting and leaves one explanation standing — a shift in the **scale** of the score between the fitting period and the evaluation period.
+
+What makes the case interesting is that this same detector has the most stable ranking of the four across the month. **Ordering stability and scale stability are different properties**, and you can have the first without the second — in which case no fixed threshold learned from the past will do, and recalibration against recent traffic is required.
+
+### Before optimizing a threshold, compute the break-even cost
+
+`break_even_review_cost` returns the expected loss per transaction: **3,375** for this period. If reviewing an alert costs less than that, the economic optimum degenerates into "review absolutely everything" and the threshold stops being a modeling decision — the problem becomes one of team capacity, not economics.
+
+The first run used a cost of 1,000, below break-even, and several detectors' optimum came out at 300,000 alerts: review 100% of traffic. That number wasn't measuring detector quality, it was measuring the cost assumption. The reported analysis uses 5,000 (1.5x break-even) so the optimum is interior and the curve says something.
+
+### Does the detector age?
+
+![Temporal degradation](data/processed/figures/operations_drift.png)
+
+**No — at least not over 17 days.** Daily ROC-AUC is flat for all four detectors and their relative order holds.
+
+Getting to that answer took two measurement fixes. The first version used daily PR-AUC and showed a spectacular improvement: **PR-AUC of 1.0000 for all four detectors on the last day**. It was an artifact — PaySim's daily volume collapses from 61,859 transactions to **23**, and on 23 rows with prevalence through the roof any detector scores perfectly.
+
+Both fixes were necessary:
+
+- **filter out low-volume periods** (`min_samples`), which leaves 17 evaluable days out of 18;
+- **use ROC-AUC instead of PR-AUC**, because daily prevalence varies and PR-AUC tracks it: a daily PR-AUC curve measures the prevalence change, not the detector's degradation.
 
 ## Tech Stack
 
