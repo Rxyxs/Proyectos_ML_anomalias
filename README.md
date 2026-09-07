@@ -3,18 +3,46 @@
 # Bank Anomaly Detection
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-13%20detectors-F7931E?logo=scikitlearn&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-15%20detectors-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 Fraud and anomaly detection system for mobile banking transactions, built on the synthetic **PaySim** dataset ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) on Kaggle), which simulates financial transactions based on a month of data from a real mobile money service in Africa.
 
+## Summary: what was learned
+
+Six modules, 15 transaction-level detectors, one account-level detector and three ensembles, all measured on the full PaySim dataset. The findings that survived verification:
+
+| Finding | Where |
+|---|---|
+| The simplest statistical baseline isn't weak, it's **anti-informative**: ROC-AUC 0.383, below chance. Looking at each column separately fails when fraud drains balances without producing individually extreme values. | [Module 3](#module-3-detector-family-benchmark-unsupervised) |
+| **The ensembles don't win.** Averaging 15 detectors when most are mediocre drags the good ones down. They help at the head of the ranking, where consensus is perfect. | [Module 3](#results) |
+| **The objective matters more than the depth.** Deep SVDD beats the autoencoder by +0.12 PR-AUC on identical architecture and data; only what it optimizes changes. | [Module 4](#transaction-level-the-objective-matters-more-than-the-depth) |
+| The sequential detector **finds no signal**, and two diagnostics rule out the method as the cause: it's PaySim, which picks fraud destinations without modeling mule behavior. | [Module 4](#why-that-negative-result-belongs-to-the-dataset-not-the-method) |
+| **The best ranker is not the best money saver.** With 10% of frauds carrying half the amount, counting cases and counting money rank differently. | [Module 5](#results-1) |
+| The best detector by PR-AUC is **undeployable**: it promises 0.1% false alarms and delivers 35%. Ranking stability and scale stability are separate properties. | [Module 5](#the-threshold-promised-versus-delivered) |
+| The **conformal guarantee** fixes the threshold under exchangeability and breaks exactly like the quantile when exchangeability fails. Its contribution is making the assumption explicit, not removing it. | [Module 6](#module-6-new-methods-and-coverage-guarantees) |
+| Adding methods **doesn't always add coverage**: the two new detectors produce the repository's first redundant pairs (ρ up to 0.99). | [Module 6](#adding-detectors-is-not-the-same-as-adding-coverage) |
+
+Two methodological corrections surfaced along the way and are documented: a random split over chronologically ordered data (fixed in Module 5) and a daily PR-AUC that showed a spectacular improvement over 23 transactions (fixed with a volume filter and by switching to ROC-AUC).
+
+## Module map
+
+| Module | Question it answers | Entry point | Notebook |
+|---|---|---|---|
+| **1 — Supervised** | Can already-labeled fraud be classified? | `src/models/train.py` | — |
+| **2 — Unsupervised** | What if the fraud is new and there are no labels? | `src/unsupervised/train_unsupervised.py` | [02](notebooks/02_unsupervised_anomaly_detection.ipynb) |
+| **3 — Benchmark** | Which detection families are complementary, and what does each cost? | `src/unsupervised/benchmark.py` | [03](notebooks/03_benchmark_familias_anomalias.ipynb) |
+| **4 — Deep and sequential** | Is the margin in the depth or in the objective? What if we look at the account's history? | `src/deep/train_deep.py` | [04](notebooks/04_modelos_profundos_y_secuencias.ipynb) |
+| **5 — Operations** | Where do I cut the score, how much money does it save, and will it still work next month? | `src/operations/run_operations.py` | [05](notebooks/05_umbral_costo_y_drift.ipynb) |
+| **6 — Guarantees** | Can the false-alarm rate be *guaranteed* rather than estimated? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
+
 ## Honest note on validation
 
-The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, and `python -m src.operations.run_operations` for Module 5, plus **123/123 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
+The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, and `python -m src.conformal.run_conformal` for Module 6, plus **150/150 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
 
 Two caveats you need in order to read the metrics correctly:
 
@@ -45,6 +73,7 @@ flowchart LR
     I --> J[/"ranking + correlation<br/>+ PR curves"/]
     C --> M["run_operations.py<br/>temporal split, threshold, cost, drift"]
     M --> H
+    C --> N["run_conformal.py<br/>conformal p-values, guaranteed coverage"]
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -59,7 +88,8 @@ bank-anomaly-detection/
 │   ├── 02_unsupervised_anomaly_detection.ipynb # Module 2: zero-day fraud detection
 │   ├── 03_benchmark_familias_anomalias.ipynb   # Module 3: detector-family benchmark + ensembles
 │   ├── 04_modelos_profundos_y_secuencias.ipynb # Module 4: VAE, Deep SVDD and sequential detector
-│   └── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
+│   ├── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
+│   └── 06_metodos_nuevos_y_conformal.ipynb     # Module 6: LODA, FastABOD and conformal detection
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Download (kagglehub) and load the PaySim dataset
@@ -89,10 +119,14 @@ bank-anomaly-detection/
 │   │   ├── thresholds.py        # Quantile, capacity, and cost-optimal thresholds
 │   │   ├── costs.py             # Money metrics and break-even review cost
 │   │   └── run_operations.py    # Full Module 5 run and its plots
+│   ├── conformal/               # Module 6: p-values with a coverage guarantee
+│   │   ├── conformal.py         # Conformal p-values, threshold, coverage report
+│   │   └── run_conformal.py     # Exchangeability-versus-drift experiment
 │   └── utils/                  # Shared helper functions
 ├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
 │                           # autoencoder, metrics store, families, ensembles,
-│                           # deep models, sequences, thresholds, costs, temporal
+│                           # deep models, sequences, thresholds, costs, temporal,
+│                           # conformal detection
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -151,7 +185,7 @@ Comparative benchmark of detector families (Module 3):
 python -m src.unsupervised.benchmark
 ```
 
-Trains all 13 detectors on the same split and scaling, builds the three ensembles on top of their scores, prints the comparison table with metrics and timings, reports which detector pairs are redundant, and saves the ranking, PR curves, and correlation matrix to `data/processed/figures/`, plus one row per detector in the `benchmark_metrics` table of `data/processed/metrics.duckdb`.
+Trains all 15 detectors on the same split and scaling, builds the three ensembles on top of their scores, prints the comparison table with metrics and timings, reports which detector pairs are redundant, and saves the ranking, PR curves, and correlation matrix to `data/processed/figures/`, plus one row per detector in the `benchmark_metrics` table of `data/processed/metrics.duckdb`.
 
 Deep models and sequential detector (Module 4):
 
@@ -168,6 +202,14 @@ python -m src.operations.run_operations
 ```
 
 Retrains all 13 detectors on a **temporal** split at real prevalence, computes the break-even review cost, compares the PR-AUC ranking against the money-saved ranking, measures how far the actual false-positive rate strays from the one the threshold promised, and evaluates day-by-day degradation while filtering out periods without enough volume.
+
+New methods and coverage guarantees (Module 6):
+
+```bash
+python -m src.conformal.run_conformal
+```
+
+Wraps the detectors in a conformal calibrator and compares the observed false-alarm rate against the guaranteed one in two scenarios: one where exchangeability holds by construction and one where evaluation moves to the later period. LODA and FastABOD join Module 3's benchmark, which grows from 13 to 15 detectors.
 
 ## Module 2: Unknown / zero-day fraud detection (unsupervised)
 
@@ -223,7 +265,7 @@ Module 2 covers three approaches plus the autoencoder. Module 3 completes the ma
 
 The point isn't to pile up models. Without labels you can't pick the best detector *before* deploying it, so the actionable questions are two others: **which families are genuinely complementary** (if two rank transactions almost identically, keeping both adds nothing) and **what each point of PR-AUC costs** (in production scoring runs per transaction and fitting runs once a day, so a detector that's slow to fit but fast to score is perfectly viable — and the reverse is not).
 
-### The seven families added
+### The seven families added in this module
 
 | Detector | Family | What it detects well |
 |---|---|---|
@@ -243,22 +285,24 @@ The three **ensembles** address the fact that these scores live on incompatible 
 
 | Detector | Family | PR-AUC | ROC-AUC | Precision@100 | fit (s) | score (s) |
 |---|---|---|---|---|---|---|
-| Gaussian Mixture | Parametric density | **0.807** | 0.948 | 0.99 | 6.62 | 0.19 |
-| Local Outlier Factor | Local density | 0.802 | 0.932 | **1.00** | 0.64 | 1.09 |
-| Deep SVDD | Deep one-class | 0.702 | 0.860 | **1.00** | 6.58 | 0.005 |
-| Robust Mahalanobis (MCD) | Robust covariance | 0.698 | 0.896 | 0.94 | 1.92 | 0.02 |
-| Ensemble — rank average | Ensemble | 0.639 | 0.876 | **1.00** | — | 0.03 |
-| Autoencoder (ReLU) | Non-linear reconstruction | 0.581 | 0.850 | 0.97 | 7.53 | 0.01 |
-| kNN (k-th distance) | Global distance | 0.552 | 0.853 | 0.85 | 0.13 | 1.25 |
-| Isolation Forest | Isolation | 0.549 | 0.850 | 0.55 | 0.56 | 0.41 |
-| One-Class SVM (Nyström) | Kernel boundary | 0.494 | 0.830 | 0.86 | 0.43 | 0.56 |
-| Ensemble — z average | Ensemble | 0.491 | 0.833 | 0.94 | — | 0.03 |
+| Gaussian Mixture | Parametric density | **0.807** | 0.948 | 0.99 | 5.27 | 0.11 |
+| Local Outlier Factor | Local density | 0.802 | 0.932 | **1.00** | 0.65 | 1.12 |
+| Deep SVDD | Deep one-class | 0.702 | 0.860 | **1.00** | 7.08 | 0.006 |
+| Robust Mahalanobis (MCD) | Robust covariance | 0.698 | 0.896 | 0.94 | 1.24 | 0.008 |
+| FastABOD | Angular geometry | 0.682 | 0.888 | **1.00** | 0.11 | 1.81 |
+| Ensemble — rank average | Ensemble | 0.628 | 0.873 | **1.00** | — | 0.03 |
+| Autoencoder (ReLU) | Non-linear reconstruction | 0.581 | 0.850 | 0.97 | 8.19 | 0.01 |
+| kNN (k-th distance) | Global distance | 0.552 | 0.853 | 0.85 | 0.10 | 1.14 |
+| Isolation Forest | Isolation | 0.549 | 0.850 | 0.55 | 0.56 | 0.40 |
+| One-Class SVM (Nyström) | Kernel boundary | 0.494 | 0.830 | 0.86 | 0.35 | 0.40 |
 | PCA (reconstruction) | Linear reconstruction | 0.487 | 0.822 | 0.76 | 0.003 | 0.01 |
-| HBOS | Per-feature statistical | 0.480 | 0.800 | 0.59 | 0.01 | 0.04 |
-| Ensemble — z max | Ensemble | 0.459 | 0.835 | 0.80 | — | 0.03 |
-| VAE (ELBO) | Deep density | 0.446 | 0.731 | 0.90 | 14.90 | 0.06 |
-| ECOD | Empirical CDF tails | 0.273 | 0.672 | 0.52 | 0.07 | 0.27 |
-| MAD-z (baseline) | Per-feature statistical | 0.140 | 0.383 | 0.14 | 0.01 | 0.01 |
+| HBOS | Per-feature statistical | 0.480 | 0.800 | 0.59 | 0.006 | 0.02 |
+| Ensemble — z average | Ensemble | 0.476 | 0.826 | 0.94 | — | 0.03 |
+| Ensemble — z max | Ensemble | 0.462 | 0.851 | 0.80 | — | 0.03 |
+| VAE (ELBO) | Deep density | 0.446 | 0.731 | 0.90 | 13.04 | 0.07 |
+| LODA | Random projections | 0.354 | 0.776 | 0.36 | 0.05 | 0.18 |
+| ECOD | Empirical CDF tails | 0.273 | 0.672 | 0.52 | 0.02 | 0.12 |
+| MAD-z (baseline) | Per-feature statistical | 0.140 | 0.383 | 0.14 | 0.01 | 0.007 |
 
 ![Ranking by family](data/processed/figures/benchmark_ranking.png)
 
@@ -267,13 +311,15 @@ The three **ensembles** address the fact that these scores live on incompatible 
 - **Gaussian Mixture (0.807) and LOF (0.802) tie at the top, but for different reasons.** Their Spearman correlation is only 0.41, and their PR curves cross: LOF dominates between recall 0.4 and 0.8, GMM overtakes it above 0.85. Which one you want depends on the team's review capacity, not on aggregate PR-AUC.
 - **The linear ablation justifies the autoencoder, but only just.** The autoencoder (0.581) beats PCA (0.487) — the non-linearity is worth a real ~0.09 of PR-AUC. What those 0.09 cost: 9.6 s of fitting against 0.002 s, plus a PyTorch dependency. Neither one comes close to GMM.
 - **The MAD-z baseline isn't just weak, it's anti-informative** (ROC-AUC 0.383, below the 0.5 of random guessing). Looking at each column separately fails here because PaySim fraud is a full drain of the origin balance: every individual value stays inside the observed range, while the heavy tails of legitimate transactions *do* produce extreme z-scores. That is exactly the argument for multivariate methods — and the reason to include Mahalanobis (0.698), which sees the same information but through the full covariance.
-- **The ensembles don't win, and that is also a result.** The best of them (rank average, 0.639) lands below GMM and LOF: averaging 13 detectors when most are mediocre drags the two good ones down. An ensemble helps when its members are of comparable quality, not when best and worst differ by 0.67 of PR-AUC. With one operationally relevant exception: **Precision@100 = 1.00** for the rank average — at the head of the ranking the consensus *is* perfect, and that head is exactly where an analyst looks.
+- **The ensembles don't win, and that is also a result.** The best of them (rank average, 0.639) lands below GMM and LOF: averaging 15 detectors when most are mediocre drags the two good ones down. An ensemble helps when its members are of comparable quality, not when best and worst differ by 0.67 of PR-AUC. With one operationally relevant exception: **Precision@100 = 1.00** for the rank average — at the head of the ranking the consensus *is* perfect, and that head is exactly where an analyst looks.
 
 ### Which detectors are redundant?
 
 ![Correlation between detectors](data/processed/figures/benchmark_correlation.png)
 
-Spearman correlation between the anomaly *rankings*. **No pair exceeds 0.9**: the thirteen families order transactions differently, so none can be dropped for pure redundancy. Among the Module 3 detectors the closest pairs are Mahalanobis ↔ kNN (0.88) and Mahalanobis ↔ Autoencoder (0.87); the most complementary, MAD-z ↔ LOF (−0.04) and MAD-z ↔ GMM (−0.42).
+Spearman correlation between the anomaly *rankings*. Among the thirteen detectors of Modules 2 to 5, **no pair exceeds 0.9**: each family orders transactions differently and none can be dropped for pure redundancy. The closest pairs are Mahalanobis ↔ kNN (0.88) and Mahalanobis ↔ Autoencoder (0.87); the most complementary, MAD-z ↔ LOF (−0.04) and MAD-z ↔ GMM (−0.42).
+
+That changes with the two detectors Module 6 adds: FastABOD replicates kNN at ρ = 0.99. Details in [Adding detectors is not the same as adding coverage](#adding-detectors-is-not-the-same-as-adding-coverage).
 
 ![Precision-Recall curves](data/processed/figures/benchmark_pr_curve.png)
 
@@ -419,6 +465,153 @@ Both fixes were necessary:
 
 - **filter out low-volume periods** (`min_samples`), which leaves 17 evaluable days out of 18;
 - **use ROC-AUC instead of PR-AUC**, because daily prevalence varies and PR-AUC tracks it: a daily PR-AUC curve measures the prevalence change, not the detector's degradation.
+
+## Module 6: New methods and coverage guarantees
+
+Three methods, chosen for what the repository was missing rather than to pile up names. Two are detectors from families not yet represented; the third is the principled answer to the problem Module 5 left open.
+
+| Method | Family | What it adds that wasn't there |
+|---|---|---|
+| **LODA** | Random-projection ensemble | Histograms over random linear combinations: captures dependencies between columns, exactly what HBOS cannot |
+| **FastABOD** | Angular geometry | Measures the variance of angles instead of distances, which is what degrades in high dimensions |
+| **Conformal detection** | Calibration with a guarantee | Turns *any* detector's score into a p-value with a finite-sample false-alarm bound |
+
+All three are implemented from scratch: `src/unsupervised/families.py` for the detectors and `src/conformal/conformal.py` for the conformal wrapper.
+
+### LODA: an ensemble of deliberately bad detectors
+
+Each member projects the data onto a **sparse** random vector (~√d non-zero entries) and estimates the density of that one-dimensional projection with a histogram. None of them detects much on its own; the average of a hundred approximates the joint density at linear cost.
+
+The advantage over HBOS is conceptual: HBOS builds its histograms on the original features and therefore assumes independence between columns. LODA builds them on linear combinations, so it does see dependencies — without estimating a covariance or computing a single distance. It also brings per-feature attribution for free (`feature_importance`): compare the score of projections that use feature *j* against those that don't, which lets you explain an alert to an analyst with no external method.
+
+**Result: PR-AUC 0.354**, third from the bottom. The reason is visible in the design itself: PaySim's signal is concentrated in a few hand-built features (`errorBalanceOrig`, `errorBalanceDest`), and mixing them randomly with the rest dilutes it. LODA shines when signal is spread out; here it's concentrated, and HBOS — which looks at each column separately — finds it better.
+
+### FastABOD: angles instead of distances
+
+Every distance-based detector in this repository shares a theoretical problem: in high dimensions distances concentrate and the contrast they need vanishes. Angles hold up better. The intuition is geometric — standing at a point inside the cloud, everything else is seen in all directions and the angles vary a lot; standing at the edge, everything is seen toward the same side and the variance collapses.
+
+The exact version is O(n³). This uses the paper's approximation, restricted to the *k* nearest neighbors, which brings it to O(n·k²) and makes it usable: **0.11 s to fit and 1.8 s to score 58,213 rows**.
+
+**Result: PR-AUC 0.682, fifth place**, above the autoencoder and kNN, with perfect Precision@100. A good detector in absolute terms — and yet that isn't the interesting finding.
+
+### Adding detectors is not the same as adding coverage
+
+Modules 3, 4 and 5 never found a detector pair with Spearman correlation above 0.9: each family ordered transactions its own way. The two new methods produce **three redundant pairs at once**:
+
+| Pair | Spearman |
+|---|---|
+| kNN ↔ **FastABOD** | **0.989** |
+| kNN ↔ **LODA** | 0.916 |
+| HBOS ↔ **LODA** | 0.910 |
+
+That isn't a failure of the analysis, it's the analysis working. FastABOD replicates kNN almost point for point because **its motivation doesn't apply here**: distance concentration is a high-dimensional phenomenon, and with 15 features there's nothing to correct — the angular detector ends up ordering just like the distance one. LODA lands halfway between kNN and HBOS for the same reason that explains its low PR-AUC.
+
+The practical reading: **deploying FastABOD alongside kNN doubles the cost without adding coverage.** That's exactly the question Module 3's correlation matrix was built to answer, and this is the first time it fires.
+
+![Correlation between detectors](data/processed/figures/benchmark_correlation.png)
+
+### Conformal detection: turning a hope into a guarantee
+
+Module 5 left a problem unsolved. The quantile threshold *estimates* that a fraction α of legitimate traffic will cross the cut, and on PaySim that estimate is off by two orders of magnitude. Conformal detection swaps the estimate for a finite-sample guarantee. Instead of comparing the score against a quantile, it compares it against a calibration set:
+
+```
+p(x) = (1 + #{calibration scores >= score of x}) / (n_calibration + 1)
+```
+
+The +1 above and below isn't cosmetic: it's what makes the bound valid without asymptotic assumptions. If the calibration set and the new point are **exchangeable**, then for a legitimate transaction `P(p(x) <= α) <= α`, assuming nothing about the distribution or the detector. It wraps any of the 15.
+
+`run_conformal.py` isolates the assumption with two scenarios sharing detector, fit and calibration, differing only in where the evaluated transactions come from: one where exchangeability holds by construction, and one where evaluation moves to the later period.
+
+**The result, in one line: conformal calibration fixes the threshold when exchangeability holds, and breaks exactly like the quantile when it doesn't.**
+
+Ratio between the observed and the guaranteed false-alarm rate (1.0 = the guarantee holds exactly; sampling noise moves it by ~10-20%):
+
+| Detector | α | Same period | Later period |
+|---|---|---|---|
+| Gaussian Mixture | 0.001 | 0.73 | 0.34 |
+| Gaussian Mixture | 0.010 | 0.85 | 1.37 |
+| **Deep SVDD** | 0.001 | **1.07** | **353.6** |
+| **Deep SVDD** | 0.010 | 0.93 | 54.2 |
+| Robust Mahalanobis | 0.010 | 0.89 | 1.18 |
+| LODA | 0.010 | 1.10 | 2.91 |
+
+The Deep SVDD row is the one that matters. With calibration and evaluation from the **same period**, the guarantee holds precisely: a ratio of 1.07 where Module 5's quantile threshold gave 350. So the calibration method was never the problem — the conformal p-value solves it cleanly. With evaluation in the **later period**, the ratio climbs back to 353.
+
+That confirms Module 5's diagnosis by an independent route: what fails isn't how the threshold is computed, it's that Deep SVDD's score scale shifts between periods. The other detectors stay within single-digit ratios in both scenarios.
+
+Conformal detection's contribution, then, isn't removing the assumption — it's **making it explicit and measurable**: you move from "hopefully the quantile still holds" to "the guarantee is valid if and only if there's exchangeability, and here is exactly how much is lost when there isn't".
+
+![Conformal coverage](data/processed/figures/conformal_coverage.png)
+
+![P-value distribution](data/processed/figures/conformal_pvalues.png)
+
+Under exchangeability the p-values of legitimate transactions are **uniform on [0,1]** — that's the statistical content of the guarantee. How far the histogram departs from uniform measures drift **without a single label**, which is the genuinely useful property in production: it gives you a drift monitor for free.
+
+None of the four is perfectly uniform, so there is drift everywhere. What sets Deep SVDD apart isn't the overall shape but the mass piled up **near zero**: its first bin reaches a density of 24 against the 1 a uniform would give, and that left tail is exactly what determines the false-alarm rate at small α.
+
+## The 15 detectors at a glance
+
+All trained on normal transactions only, all following scikit-learn's `fit` / `score_samples` convention (lower = more anomalous), all comparable against each other on Module 3's split.
+
+| Detector | Family | Module | PR-AUC | ROC-AUC | Implemented in |
+|---|---|---|---|---|---|
+| Gaussian Mixture | Parametric density | 3 | 0.807 | 0.948 | `unsupervised/families.py` |
+| Local Outlier Factor | Local density | 2 | 0.802 | 0.932 | `unsupervised/models.py` |
+| Deep SVDD | Deep one-class | 4 | 0.702 | 0.860 | `deep/one_class.py` |
+| Robust Mahalanobis (MCD) | Robust covariance | 3 | 0.698 | 0.896 | `unsupervised/families.py` |
+| FastABOD | Angular geometry | 6 | 0.682 | 0.888 | `unsupervised/families.py` |
+| Autoencoder (ReLU/GELU/Swish) | Non-linear reconstruction | 2 | 0.581 | 0.850 | `unsupervised/autoencoder.py` |
+| kNN (k-th distance) | Global distance | 3 | 0.552 | 0.853 | `unsupervised/families.py` |
+| Isolation Forest | Isolation | 2 | 0.549 | 0.850 | `unsupervised/models.py` |
+| One-Class SVM (Nyström) | Kernel boundary | 3 | 0.494 | 0.830 | `unsupervised/families.py` |
+| PCA (reconstruction) | Linear reconstruction | 3 | 0.487 | 0.822 | `unsupervised/families.py` |
+| HBOS | Per-feature statistical | 3 | 0.480 | 0.800 | `unsupervised/families.py` |
+| VAE (ELBO) | Deep density | 4 | 0.446 | 0.731 | `deep/one_class.py` |
+| LODA | Random projections | 6 | 0.354 | 0.776 | `unsupervised/families.py` |
+| ECOD | Empirical CDF tails | 3 | 0.273 | 0.672 | `unsupervised/families.py` |
+| MAD-z | Per-feature statistical | 2 | 0.140 | 0.383 | `unsupervised/models.py` |
+
+Plus: three **ensemble** strategies (`unsupervised/ensemble.py`), a per-destination-account **GRU autoencoder** (`deep/sequences.py`, evaluated on accounts and therefore outside this table), and a **conformal** wrapper applicable to any of the fifteen (`conformal/conformal.py`).
+
+## How to read the metrics
+
+This repository walked into nearly every trap on this list before documenting them, so they're worth keeping at hand:
+
+| Metric | What it answers | When it misleads |
+|---|---|---|
+| **PR-AUC** | Ranking quality at the head, where an analyst looks | **Depends on prevalence.** Not comparable across sets with different fraud rates — Module 5 sits at 0.23% and Module 3 at 14.1% |
+| **ROC-AUC** | Quality of the full ordering | Looks optimistic under extreme imbalance; mainly useful for comparing *across* different prevalences |
+| **Precision@k** | Of the k alerts the team reviews, how many are fraud | Ignores everything outside the k |
+| **Value-weighted recall** | What fraction of the defrauded **money** is caught | Can be high with low count-recall, if the expensive cases are caught |
+| **Net savings** | Money recovered minus review cost | Dominated by the cost assumption: below break-even the optimum degenerates into "review everything" |
+| **Observed FPR vs α** | Whether the threshold delivers what it promised | Measuring it on the same period as the fit hides the drift |
+| **Conformal p-value** | Same as above, but with a guaranteed bound | The guarantee is **marginal** and **conditional on exchangeability** |
+
+## Reproducibility
+
+The whole pipeline is deterministic: fixed seeds in every `random_state`, `torch.manual_seed` in the PyTorch models, and the same splits rebuilt from the same seed. Re-running any module reproduces the reported PR-AUC to four decimals; only fit times vary between runs.
+
+```bash
+python -m src.data.loader                    # downloads PaySim (needs Kaggle credentials)
+python -m src.models.train                   # Module 1
+python -m src.unsupervised.train_unsupervised  # Module 2
+python -m src.unsupervised.benchmark         # Module 3 (+ Module 4's VAE and Deep SVDD)
+python -m src.deep.train_deep                # Module 4
+python -m src.operations.run_operations      # Module 5
+python -m src.conformal.run_conformal        # Module 6
+pytest tests/                                # 150 tests, no download needed
+```
+
+Every module starts by loading and cleaning the CSV's 6,362,620 rows (493 MB), which is what dominates startup time; detector fit and scoring are timed separately in Module 3's table. The unit tests run in seconds because they use synthetic data and never touch the dataset.
+
+## Known limitations
+
+- **PaySim is synthetic.** Fraud is injected with a fixed rule, which explains the sequential detector's null result: the simulator doesn't model mule-account behavior. This repository's numbers measure algorithms against a simulator, not expected production performance.
+- **Modules 2 to 4 use a test set enriched to 14.1%** so there are enough anomalies to measure Precision@k stably. Their PR-AUC values do not transfer to real prevalence. Module 5 corrects this with natural prevalence, which is why its numbers are far lower.
+- **The features are linearly dependent by construction**: the `type_*` dummies sum to 1 and the `errorBalance*` columns are exact combinations of amounts and balances. Mahalanobis handles it with a pseudo-inverse, but it's the cause of the rank-deficiency warning scikit-learn emits.
+- **The review cost is a business assumption**, not data. The break-even cost (3,375 per alert) is reported so you can judge how much of the result depends on that choice.
+- **Module 1 (supervised) was not re-run** in the session that produced these numbers; its metrics aren't reported.
+- **Temporal degradation was measured over 17 days.** It says nothing about longer horizons, and PaySim's volume collapses right at the end of the month, leaving the final days without enough sample to evaluate.
 
 ## Tech Stack
 

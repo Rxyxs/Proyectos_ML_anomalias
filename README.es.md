@@ -3,18 +3,46 @@
 # Bank Anomaly Detection
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-13%20detectores-F7931E?logo=scikitlearn&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-15%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 Sistema de detección de fraude y anomalías en transacciones bancarias móviles, construido sobre el dataset sintético **PaySim** ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) en Kaggle), que simula transacciones financieras a partir de un mes de datos de un servicio real de dinero móvil en África.
 
+## Resumen: qué se aprendió
+
+Seis módulos, 15 detectores a nivel de transacción, uno a nivel de cuenta y tres ensembles, todos medidos sobre el PaySim completo. Los hallazgos que sobrevivieron a la verificación:
+
+| Hallazgo | Dónde |
+|---|---|
+| El baseline estadístico más simple no es débil, es **anti-informativo**: ROC-AUC 0.383, por debajo del azar. Mirar cada columna por separado falla cuando el fraude vacía saldos sin producir valores extremos individuales. | [Módulo 3](#módulo-3-benchmark-de-familias-de-detección-no-supervisado) |
+| **Los ensembles no ganan.** Promediar 15 detectores donde la mayoría es mediocre arrastra a los buenos. Sirven en la cabeza del ranking, donde el consenso es perfecto. | [Módulo 3](#resultados) |
+| **El objetivo importa más que la profundidad.** Deep SVDD supera al autoencoder en +0.12 de PR-AUC con la misma arquitectura y datos; solo cambia qué optimiza. | [Módulo 4](#nivel-transacción-el-objetivo-importa-más-que-la-profundidad) |
+| El detector secuencial **no encuentra señal**, y dos diagnósticos descartan que sea culpa del método: es PaySim, que elige destinos de fraude sin modelar comportamiento de mula. | [Módulo 4](#por-qué-ese-resultado-negativo-es-del-dataset-y-no-del-método) |
+| **El que mejor rankea no es el que más plata salva.** Con el 10% de los fraudes concentrando la mitad del monto, contar casos y contar pesos ordenan distinto. | [Módulo 5](#resultados-1) |
+| El mejor detector por PR-AUC es **indesplegable**: promete 0,1% de falsas alarmas y entrega 35%. Estabilidad del ranking y estabilidad de la escala son propiedades distintas. | [Módulo 5](#el-umbral-lo-prometido-contra-lo-cumplido) |
+| La **garantía conforme** arregla el umbral cuando hay intercambiabilidad y se rompe igual que el cuantil cuando no la hay. Su aporte es volver el supuesto explícito, no eliminarlo. | [Módulo 6](#módulo-6-métodos-nuevos-y-garantías-de-cobertura) |
+| Agregar métodos **no siempre agrega cobertura**: los dos detectores nuevos producen los primeros pares redundantes del repositorio (ρ hasta 0.99). | [Módulo 6](#agregar-detectores-no-es-lo-mismo-que-agregar-cobertura) |
+
+Dos correcciones de método que aparecieron en el camino y quedaron documentadas: un split aleatorio sobre datos con orden cronológico (corregido en el Módulo 5) y un PR-AUC diario que mostraba una mejora espectacular sobre 23 transacciones (corregido con un filtro de volumen y cambiando a ROC-AUC).
+
+## Mapa de módulos
+
+| Módulo | Pregunta que responde | Punto de entrada | Notebook |
+|---|---|---|---|
+| **1 — Supervisado** | ¿Se puede clasificar fraude ya etiquetado? | `src/models/train.py` | — |
+| **2 — No supervisado** | ¿Y si el fraude es nuevo y no hay etiquetas? | `src/unsupervised/train_unsupervised.py` | [02](notebooks/02_unsupervised_anomaly_detection.ipynb) |
+| **3 — Benchmark** | ¿Qué familias de detección son complementarias y cuánto cuesta cada una? | `src/unsupervised/benchmark.py` | [03](notebooks/03_benchmark_familias_anomalias.ipynb) |
+| **4 — Profundo y secuencial** | ¿El margen está en la profundidad o en el objetivo? ¿Y si se mira la historia de la cuenta? | `src/deep/train_deep.py` | [04](notebooks/04_modelos_profundos_y_secuencias.ipynb) |
+| **5 — Operación** | ¿Dónde corto el score, cuánta plata salva y sigue funcionando el mes que viene? | `src/operations/run_operations.py` | [05](notebooks/05_umbral_costo_y_drift.ipynb) |
+| **6 — Garantías** | ¿Se puede *garantizar* la tasa de falsas alarmas en vez de estimarla? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
+
 ## Nota honesta sobre validación
 
-Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3 `python -m src.deep.train_deep` para el Módulo 4 y `python -m src.operations.run_operations` para el Módulo 5, más **123/123 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3 `python -m src.deep.train_deep` para el Módulo 4 `python -m src.operations.run_operations` para el Módulo 5 y `python -m src.conformal.run_conformal` para el Módulo 6, más **150/150 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
 
 Dos advertencias necesarias para leer bien las métricas:
 
@@ -45,6 +73,7 @@ flowchart LR
     I --> J[/"ranking + correlación<br/>+ curvas PR"/]
     C --> M["run_operations.py<br/>split temporal, umbral, costo, drift"]
     M --> H
+    C --> N["run_conformal.py<br/>p-valores conformes, cobertura garantizada"]
 ```
 
 El proyecto sigue una arquitectura modular que separa claramente la ingesta de datos, el preprocesamiento, la ingeniería de características y el modelado, favoreciendo la reproducibilidad y la testabilidad del código:
@@ -59,7 +88,8 @@ bank-anomaly-detection/
 │   ├── 02_unsupervised_anomaly_detection.ipynb # Módulo 2: detección de fraude zero-day
 │   ├── 03_benchmark_familias_anomalias.ipynb   # Módulo 3: benchmark de familias + ensembles
 │   ├── 04_modelos_profundos_y_secuencias.ipynb # Módulo 4: VAE, Deep SVDD y detector secuencial
-│   └── 05_umbral_costo_y_drift.ipynb           # Módulo 5: umbral, dinero y validación temporal
+│   ├── 05_umbral_costo_y_drift.ipynb           # Módulo 5: umbral, dinero y validación temporal
+│   └── 06_metodos_nuevos_y_conformal.ipynb     # Módulo 6: LODA, FastABOD y detección conforme
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -89,10 +119,14 @@ bank-anomaly-detection/
 │   │   ├── thresholds.py        # Umbral por cuantil, por capacidad y óptimo en costo
 │   │   ├── costs.py             # Métricas en pesos y costo de revisión de equilibrio
 │   │   └── run_operations.py    # Corrida completa del módulo 5 y sus gráficas
+│   ├── conformal/               # Módulo 6: p-valores con garantía de cobertura
+│   │   ├── conformal.py         # P-valores conformes, umbral y reporte de cobertura
+│   │   └── run_conformal.py     # Experimento de intercambiabilidad contra deriva
 │   └── utils/                  # Funciones auxiliares compartidas
 ├── tests/                 # Pruebas unitarias (pytest): preprocessing, features, baseline
 │                           # MAD, autoencoder, metrics store, familias, ensembles,
-│                           # modelos profundos, secuencias, umbrales, costos, temporal
+│                           # modelos profundos, secuencias, umbrales, costos, temporal,
+│                           # detección conforme
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -151,7 +185,7 @@ Benchmark comparativo de familias de detectores (Módulo 3):
 python -m src.unsupervised.benchmark
 ```
 
-Entrena los 13 detectores sobre el mismo split y escalado, construye los tres ensembles encima de sus scores, imprime la tabla comparativa con métricas y tiempos, reporta los pares de detectores redundantes y guarda ranking, curvas PR y matriz de correlación en `data/processed/figures/`, además de una fila por detector en la tabla `benchmark_metrics` de `data/processed/metrics.duckdb`.
+Entrena los 15 detectores sobre el mismo split y escalado, construye los tres ensembles encima de sus scores, imprime la tabla comparativa con métricas y tiempos, reporta los pares de detectores redundantes y guarda ranking, curvas PR y matriz de correlación en `data/processed/figures/`, además de una fila por detector en la tabla `benchmark_metrics` de `data/processed/metrics.duckdb`.
 
 Modelos profundos y detector secuencial (Módulo 4):
 
@@ -168,6 +202,14 @@ python -m src.operations.run_operations
 ```
 
 Reentrena los 13 detectores sobre un split **temporal** con prevalencia real, calcula el costo de revisión de equilibrio, compara el ranking por PR-AUC contra el ranking por dinero salvado, mide cuánto se aleja la tasa de falsos positivos real de la prometida por el umbral, y evalúa la degradación día a día filtrando los períodos sin volumen suficiente.
+
+Métodos nuevos y garantías de cobertura (Módulo 6):
+
+```bash
+python -m src.conformal.run_conformal
+```
+
+Envuelve los detectores en un calibrador conforme y compara la tasa de falsas alarmas observada contra la garantizada en dos escenarios: uno donde la intercambiabilidad se cumple por construcción y otro donde la evaluación pasa al período posterior. LODA y FastABOD se agregan al benchmark del Módulo 3, que pasa de 13 a 15 detectores.
 
 ## Módulo 2: Detección de fraude desconocido / zero-day (no supervisado)
 
@@ -223,7 +265,7 @@ El Módulo 2 cubre tres enfoques más el autoencoder. El Módulo 3 cierra el map
 
 La motivación no es acumular modelos. Sin etiquetas no se puede elegir el mejor detector *antes* de desplegarlo, así que las preguntas accionables son otras dos: **qué familias son realmente complementarias** (si dos ordenan las transacciones casi igual, tener las dos no aporta nada) y **cuánto cuesta cada punto de PR-AUC** (en producción el scoring corre por transacción y el ajuste una vez al día, así que un detector lento de entrenar pero rápido de puntuar es viable — y al revés no).
 
-### Las siete familias agregadas
+### Las siete familias agregadas en este módulo
 
 | Detector | Familia | Qué anomalía detecta bien |
 |---|---|---|
@@ -243,22 +285,24 @@ Los tres **ensembles** resuelven el problema de que los scores viven en escalas 
 
 | Detector | Familia | PR-AUC | ROC-AUC | Precision@100 | fit (s) | score (s) |
 |---|---|---|---|---|---|---|
-| Gaussian Mixture | Densidad paramétrica | **0.807** | 0.948 | 0.99 | 6.62 | 0.19 |
-| Local Outlier Factor | Densidad local | 0.802 | 0.932 | **1.00** | 0.64 | 1.09 |
-| Deep SVDD | Una clase profunda | 0.702 | 0.860 | **1.00** | 6.58 | 0.005 |
-| Mahalanobis robusto (MCD) | Covarianza robusta | 0.698 | 0.896 | 0.94 | 1.92 | 0.02 |
-| Ensemble — promedio de rangos | Ensemble | 0.639 | 0.876 | **1.00** | — | 0.03 |
-| Autoencoder (ReLU) | Reconstrucción no lineal | 0.581 | 0.850 | 0.97 | 7.53 | 0.01 |
-| kNN (k-ésima distancia) | Distancia global | 0.552 | 0.853 | 0.85 | 0.13 | 1.25 |
-| Isolation Forest | Aislamiento | 0.549 | 0.850 | 0.55 | 0.56 | 0.41 |
-| One-Class SVM (Nyström) | Frontera con kernel | 0.494 | 0.830 | 0.86 | 0.43 | 0.56 |
-| Ensemble — promedio z | Ensemble | 0.491 | 0.833 | 0.94 | — | 0.03 |
+| Gaussian Mixture | Densidad paramétrica | **0.807** | 0.948 | 0.99 | 5.27 | 0.11 |
+| Local Outlier Factor | Densidad local | 0.802 | 0.932 | **1.00** | 0.65 | 1.12 |
+| Deep SVDD | Una clase profunda | 0.702 | 0.860 | **1.00** | 7.08 | 0.006 |
+| Mahalanobis robusto (MCD) | Covarianza robusta | 0.698 | 0.896 | 0.94 | 1.24 | 0.008 |
+| FastABOD | Geometría angular | 0.682 | 0.888 | **1.00** | 0.11 | 1.81 |
+| Ensemble — promedio de rangos | Ensemble | 0.628 | 0.873 | **1.00** | — | 0.03 |
+| Autoencoder (ReLU) | Reconstrucción no lineal | 0.581 | 0.850 | 0.97 | 8.19 | 0.01 |
+| kNN (k-ésima distancia) | Distancia global | 0.552 | 0.853 | 0.85 | 0.10 | 1.14 |
+| Isolation Forest | Aislamiento | 0.549 | 0.850 | 0.55 | 0.56 | 0.40 |
+| One-Class SVM (Nyström) | Frontera con kernel | 0.494 | 0.830 | 0.86 | 0.35 | 0.40 |
 | PCA (reconstrucción) | Reconstrucción lineal | 0.487 | 0.822 | 0.76 | 0.003 | 0.01 |
-| HBOS | Estadístico por feature | 0.480 | 0.800 | 0.59 | 0.01 | 0.04 |
-| Ensemble — máximo z | Ensemble | 0.459 | 0.835 | 0.80 | — | 0.03 |
-| VAE (ELBO) | Densidad profunda | 0.446 | 0.731 | 0.90 | 14.90 | 0.06 |
-| ECOD | Colas de la CDF empírica | 0.273 | 0.672 | 0.52 | 0.07 | 0.27 |
-| MAD-z (baseline) | Estadístico por feature | 0.140 | 0.383 | 0.14 | 0.01 | 0.01 |
+| HBOS | Estadístico por feature | 0.480 | 0.800 | 0.59 | 0.006 | 0.02 |
+| Ensemble — promedio z | Ensemble | 0.476 | 0.826 | 0.94 | — | 0.03 |
+| Ensemble — máximo z | Ensemble | 0.462 | 0.851 | 0.80 | — | 0.03 |
+| VAE (ELBO) | Densidad profunda | 0.446 | 0.731 | 0.90 | 13.04 | 0.07 |
+| LODA | Proyecciones aleatorias | 0.354 | 0.776 | 0.36 | 0.05 | 0.18 |
+| ECOD | Colas de la CDF empírica | 0.273 | 0.672 | 0.52 | 0.02 | 0.12 |
+| MAD-z (baseline) | Estadístico por feature | 0.140 | 0.383 | 0.14 | 0.01 | 0.007 |
 
 ![Ranking por familia](data/processed/figures/benchmark_ranking.png)
 
@@ -267,13 +311,15 @@ Los tres **ensembles** resuelven el problema de que los scores viven en escalas 
 - **Gaussian Mixture (0.807) y LOF (0.802) empatan arriba, pero por razones distintas.** Su correlación de Spearman es apenas 0.41, y sus curvas PR se cruzan: LOF domina entre recall 0.4 y 0.8, GMM lo supera por encima de 0.85. Cuál conviene depende de la capacidad de revisión del equipo, no del PR-AUC agregado.
 - **La ablación lineal justifica al autoencoder, pero apenas.** El autoencoder (0.581) supera al PCA (0.487) — la no-linealidad aporta ~0.09 de PR-AUC real. El costo de esos 0.09: 9.6 s de ajuste contra 0.002 s, y una dependencia de PyTorch. Ninguno de los dos se acerca a GMM.
 - **El baseline MAD-z no es solo débil, es anti-informativo** (ROC-AUC 0.383, por debajo del 0.5 del azar). Mirar cada columna por separado falla aquí porque el fraude de PaySim es un vaciado completo del saldo de origen: cada valor individual queda dentro del rango observado, mientras que las colas pesadas de las transacciones legítimas sí producen z-scores extremos. Es exactamente el argumento a favor de los métodos multivariados — y la razón de incluir Mahalanobis (0.698), que ve la misma información pero con la covarianza completa.
-- **Los ensembles no ganan, y eso también es un resultado.** El mejor (promedio de rangos, 0.639) queda por debajo de GMM y LOF: promediar 13 detectores donde la mayoría son mediocres arrastra hacia abajo a los dos buenos. Un ensemble ayuda cuando sus miembros son de calidad comparable, no cuando hay una diferencia de 0.67 de PR-AUC entre el mejor y el peor. Con una excepción operativa relevante: **Precision@100 = 1.00** para el promedio de rangos — en la cabeza del ranking sí hay consenso perfecto, que es justo donde mira un analista.
+- **Los ensembles no ganan, y eso también es un resultado.** El mejor (promedio de rangos, 0.639) queda por debajo de GMM y LOF: promediar 15 detectores donde la mayoría son mediocres arrastra hacia abajo a los dos buenos. Un ensemble ayuda cuando sus miembros son de calidad comparable, no cuando hay una diferencia de 0.67 de PR-AUC entre el mejor y el peor. Con una excepción operativa relevante: **Precision@100 = 1.00** para el promedio de rangos — en la cabeza del ranking sí hay consenso perfecto, que es justo donde mira un analista.
 
 ### ¿Qué detectores son redundantes?
 
 ![Correlación entre detectores](data/processed/figures/benchmark_correlation.png)
 
-Correlación de Spearman entre los *rankings* de anomalía. **Ningún par supera 0.9**: las trece familias ordenan las transacciones de forma distinta, así que ninguna es descartable por redundancia pura. Entre los detectores del Módulo 3 los pares más parecidos son Mahalanobis ↔ kNN (0.88) y Mahalanobis ↔ Autoencoder (0.87); los más complementarios, MAD-z ↔ LOF (−0.04) y MAD-z ↔ GMM (−0.42).
+Correlación de Spearman entre los *rankings* de anomalía. Entre los trece detectores de los Módulos 2 a 5, **ningún par supera 0.9**: cada familia ordena las transacciones de forma distinta y ninguna es descartable por redundancia pura. Los pares más parecidos son Mahalanobis ↔ kNN (0.88) y Mahalanobis ↔ Autoencoder (0.87); los más complementarios, MAD-z ↔ LOF (−0.04) y MAD-z ↔ GMM (−0.42).
+
+Eso cambia con los dos detectores que agrega el Módulo 6: FastABOD replica a kNN con ρ = 0.99. El detalle está en [Agregar detectores no es lo mismo que agregar cobertura](#agregar-detectores-no-es-lo-mismo-que-agregar-cobertura).
 
 ![Curvas Precision-Recall](data/processed/figures/benchmark_pr_curve.png)
 
@@ -419,6 +465,153 @@ Las dos correcciones, ambas necesarias:
 
 - **filtrar los períodos con poco volumen** (`min_samples`), que deja 17 días evaluables de los 18;
 - **usar ROC-AUC en vez de PR-AUC**, porque la prevalencia diaria varía y el PR-AUC la sigue: una curva de PR-AUC por día mide el cambio de prevalencia, no la degradación del detector.
+
+## Módulo 6: Métodos nuevos y garantías de cobertura
+
+Tres métodos, elegidos por lo que le faltaba al repositorio y no por acumular nombres. Dos son detectores de familias todavía no representadas; el tercero es la respuesta principiada al problema que dejó abierto el Módulo 5.
+
+| Método | Familia | Qué aporta que no había |
+|---|---|---|
+| **LODA** | Ensemble de proyecciones aleatorias | Histogramas sobre combinaciones lineales aleatorias: capta dependencias entre columnas, que es justo lo que HBOS no puede |
+| **FastABOD** | Geometría angular | Mide la varianza de los ángulos en vez de distancias, que es lo que se degrada en dimensión alta |
+| **Detección conforme** | Calibración con garantía | Convierte el score de *cualquier* detector en un p-valor con cota de falsas alarmas en muestra finita |
+
+Los tres están implementados desde cero: `src/unsupervised/families.py` para los detectores y `src/conformal/conformal.py` para el envoltorio conforme.
+
+### LODA: un ensemble de detectores deliberadamente malos
+
+Cada miembro proyecta los datos sobre un vector aleatorio **disperso** (~√d entradas no nulas) y estima la densidad de esa proyección unidimensional con un histograma. Ninguno detecta gran cosa por separado; el promedio de cien aproxima la densidad conjunta a coste lineal.
+
+La ventaja sobre HBOS es conceptual: HBOS arma sus histogramas sobre las features originales y por lo tanto asume independencia entre columnas. LODA los arma sobre combinaciones lineales, así que ve dependencias — sin estimar una covarianza ni calcular una sola distancia. Trae además atribución por feature de regalo (`feature_importance`): se compara el score de las proyecciones que usan la feature *j* contra el de las que no, lo que permite explicarle una alerta a un analista sin ningún método externo.
+
+**Resultado: PR-AUC 0.354**, el tercero peor. La razón es visible en el propio diseño: la señal de PaySim está concentrada en unas pocas features construidas a mano (`errorBalanceOrig`, `errorBalanceDest`), y mezclarlas aleatoriamente con las demás la diluye. LODA brilla cuando la señal está repartida; acá está concentrada, y HBOS, que mira cada columna por separado, la encuentra mejor.
+
+### FastABOD: ángulos en vez de distancias
+
+Todos los detectores de distancia del repositorio comparten un problema teórico: en dimensión alta las distancias se concentran y el contraste que necesitan se desvanece. Los ángulos aguantan mejor. La intuición es geométrica — parado en un punto interior a la nube, el resto se ve en todas las direcciones y los ángulos varían mucho; parado en el borde, todo se ve hacia el mismo lado y la varianza se desploma.
+
+La versión exacta es O(n³). Se usa la aproximación del paper, restringida a los *k* vecinos más cercanos, que la baja a O(n·k²) y la vuelve utilizable: **0,11 s de ajuste y 1,8 s para puntuar 58.213 filas**.
+
+**Resultado: PR-AUC 0.682, quinto puesto**, por encima del autoencoder y de kNN, con Precision@100 perfecta. Buen detector en términos absolutos — y sin embargo el hallazgo interesante no es ese.
+
+### Agregar detectores no es lo mismo que agregar cobertura
+
+Los Módulos 3, 4 y 5 nunca encontraron un par de detectores con correlación de Spearman superior a 0.9: cada familia ordenaba las transacciones a su manera. Los dos métodos nuevos producen **tres pares redundantes de golpe**:
+
+| Par | Spearman |
+|---|---|
+| kNN ↔ **FastABOD** | **0.989** |
+| kNN ↔ **LODA** | 0.916 |
+| HBOS ↔ **LODA** | 0.910 |
+
+Eso no es un fracaso del análisis, es el análisis funcionando. FastABOD replica a kNN casi punto por punto porque **su motivación no aplica acá**: la concentración de distancias es un fenómeno de dimensión alta, y con 15 features no hay nada que corregir — el detector angular termina ordenando igual que el de distancias. LODA queda a medio camino entre kNN y HBOS por la misma razón que explica su PR-AUC bajo.
+
+La lectura práctica: **desplegar FastABOD junto a kNN duplica el costo sin agregar cobertura.** Es exactamente la pregunta que la matriz de correlación del Módulo 3 se construyó para responder, y esta es la primera vez que dispara.
+
+![Correlación entre detectores](data/processed/figures/benchmark_correlation.png)
+
+### Detección conforme: convertir una esperanza en una garantía
+
+El Módulo 5 dejó un problema sin resolver. El umbral por cuantil *estima* que una fracción α del tráfico legítimo superará el corte, y sobre PaySim esa estimación falla por dos órdenes de magnitud. La detección conforme cambia la estimación por una garantía en muestra finita. En vez de comparar el score contra un cuantil, lo compara contra un conjunto de calibración:
+
+```
+p(x) = (1 + #{scores de calibración >= score de x}) / (n_calibración + 1)
+```
+
+El +1 arriba y abajo no es cosmético: es lo que hace válida la cota sin supuestos asintóticos. Si la calibración y el punto nuevo son **intercambiables**, entonces para una transacción legítima `P(p(x) <= α) <= α`, sin suponer nada sobre la distribución ni sobre el detector. Envuelve a cualquiera de los 15.
+
+`run_conformal.py` aísla el supuesto con dos escenarios que comparten detector, ajuste y calibración, y difieren solo en de dónde salen las transacciones evaluadas: uno donde la intercambiabilidad se cumple por construcción, y otro donde la evaluación pasa al período posterior.
+
+**El resultado, en una línea: la calibración conforme arregla el umbral cuando la intercambiabilidad se cumple, y se rompe igual que el cuantil cuando no.**
+
+Razón entre la tasa de falsas alarmas observada y la garantizada (1.0 = la garantía se cumple exactamente; el ruido muestral la mueve un ~10-20%):
+
+| Detector | α | Mismo período | Período posterior |
+|---|---|---|---|
+| Gaussian Mixture | 0.001 | 0.73 | 0.34 |
+| Gaussian Mixture | 0.010 | 0.85 | 1.37 |
+| **Deep SVDD** | 0.001 | **1.07** | **353.6** |
+| **Deep SVDD** | 0.010 | 0.93 | 54.2 |
+| Mahalanobis robusto | 0.010 | 0.89 | 1.18 |
+| LODA | 0.010 | 1.10 | 2.91 |
+
+La fila de Deep SVDD es la que importa. Con calibración y evaluación del **mismo período**, la garantía se cumple con precisión: razón 1.07 donde el umbral por cuantil del Módulo 5 daba 350. O sea que el método de calibración no era el problema — el p-valor conforme lo resuelve limpiamente. Con evaluación en el **período posterior**, la razón vuelve a 353.
+
+Eso confirma por una vía independiente el diagnóstico del Módulo 5: lo que falla no es cómo se calcula el umbral, es que la escala del score de Deep SVDD se desplaza entre períodos. Los demás detectores mantienen razones de un dígito en los dos escenarios.
+
+El aporte de la detección conforme no es entonces eliminar el supuesto, es **volverlo explícito y medible**: se pasa de "ojalá el cuantil siga sirviendo" a "la garantía vale si y solo si hay intercambiabilidad, y acá está exactamente cuánto se pierde cuando no la hay".
+
+![Cobertura conforme](data/processed/figures/conformal_coverage.png)
+
+![Distribución de p-valores](data/processed/figures/conformal_pvalues.png)
+
+Bajo intercambiabilidad los p-valores de las transacciones legítimas son **uniformes en [0,1]** — ese es el contenido estadístico de la garantía. Cuánto se aparta el histograma de la uniforme mide la deriva **sin necesidad de una sola etiqueta**, que es la propiedad realmente útil en producción: da un monitor de drift gratis.
+
+Ninguno de los cuatro es perfectamente uniforme, así que hay deriva en todos. Lo que separa a Deep SVDD del resto no es la forma global sino la masa acumulada **cerca de cero**: su primer bin concentra una densidad de 24 contra la de 1 que tendría una uniforme, y esa cola izquierda es exactamente la que determina la tasa de falsas alarmas con α chico.
+
+## Los 15 detectores de un vistazo
+
+Todos entrenados solo con transacciones normales, todos con la convención `fit` / `score_samples` de scikit-learn (más bajo = más anómalo), todos comparables entre sí sobre el mismo split del Módulo 3.
+
+| Detector | Familia | Módulo | PR-AUC | ROC-AUC | Implementado en |
+|---|---|---|---|---|---|
+| Gaussian Mixture | Densidad paramétrica | 3 | 0.807 | 0.948 | `unsupervised/families.py` |
+| Local Outlier Factor | Densidad local | 2 | 0.802 | 0.932 | `unsupervised/models.py` |
+| Deep SVDD | Una clase profunda | 4 | 0.702 | 0.860 | `deep/one_class.py` |
+| Mahalanobis robusto (MCD) | Covarianza robusta | 3 | 0.698 | 0.896 | `unsupervised/families.py` |
+| FastABOD | Geometría angular | 6 | 0.682 | 0.888 | `unsupervised/families.py` |
+| Autoencoder (ReLU/GELU/Swish) | Reconstrucción no lineal | 2 | 0.581 | 0.850 | `unsupervised/autoencoder.py` |
+| kNN (k-ésima distancia) | Distancia global | 3 | 0.552 | 0.853 | `unsupervised/families.py` |
+| Isolation Forest | Aislamiento | 2 | 0.549 | 0.850 | `unsupervised/models.py` |
+| One-Class SVM (Nyström) | Frontera con kernel | 3 | 0.494 | 0.830 | `unsupervised/families.py` |
+| PCA (reconstrucción) | Reconstrucción lineal | 3 | 0.487 | 0.822 | `unsupervised/families.py` |
+| HBOS | Estadístico por feature | 3 | 0.480 | 0.800 | `unsupervised/families.py` |
+| VAE (ELBO) | Densidad profunda | 4 | 0.446 | 0.731 | `deep/one_class.py` |
+| LODA | Proyecciones aleatorias | 6 | 0.354 | 0.776 | `unsupervised/families.py` |
+| ECOD | Colas de la CDF empírica | 3 | 0.273 | 0.672 | `unsupervised/families.py` |
+| MAD-z | Estadístico por feature | 2 | 0.140 | 0.383 | `unsupervised/models.py` |
+
+Además: tres estrategias de **ensemble** (`unsupervised/ensemble.py`), un **autoencoder GRU por cuenta destino** (`deep/sequences.py`, evaluado sobre cuentas y por lo tanto fuera de esta tabla) y un envoltorio **conforme** aplicable a cualquiera de los quince (`conformal/conformal.py`).
+
+## Cómo leer las métricas
+
+Este repositorio tropezó con casi todas las trampas de esta lista antes de documentarlas, así que conviene tenerlas a mano:
+
+| Métrica | Qué responde | Cuándo engaña |
+|---|---|---|
+| **PR-AUC** | Calidad del ranking en la cabeza, donde mira un analista | **Depende de la prevalencia.** No es comparable entre conjuntos con distinta tasa de fraude — el Módulo 5 tiene 0,23% y el Módulo 3, 14,1% |
+| **ROC-AUC** | Calidad del orden completo | Se ve optimista con desbalance extremo; útil sobre todo para comparar *entre* prevalencias distintas |
+| **Precision@k** | De las k alertas que el equipo revisa, cuántas son fraude | Ignora todo lo que queda fuera de las k |
+| **Recall en monto** | Qué fracción del **dinero** defraudado se atrapa | Puede ser alta con recall por conteo bajo, si se atrapan los casos caros |
+| **Ahorro neto** | Dinero recuperado menos costo de revisión | Domina el supuesto de costo: por debajo del equilibrio, el óptimo degenera en "revisar todo" |
+| **FPR observada vs α** | Si el umbral cumple lo que promete | Medirla sobre el mismo período del ajuste esconde la deriva |
+| **p-valor conforme** | Igual que la anterior, pero con cota garantizada | La garantía es **marginal** y **condicional a la intercambiabilidad** |
+
+## Reproducibilidad
+
+Todo el pipeline es determinista: semillas fijas en cada `random_state`, `torch.manual_seed` en los modelos de PyTorch, y los mismos splits reconstruidos a partir de la misma semilla. Reejecutar cualquier módulo reproduce los PR-AUC reportados hasta el cuarto decimal; solo los tiempos de ajuste varían entre corridas.
+
+```bash
+python -m src.data.loader                    # descarga PaySim (requiere credenciales de Kaggle)
+python -m src.models.train                   # Módulo 1
+python -m src.unsupervised.train_unsupervised  # Módulo 2
+python -m src.unsupervised.benchmark         # Módulo 3 (+ VAE y Deep SVDD del Módulo 4)
+python -m src.deep.train_deep                # Módulo 4
+python -m src.operations.run_operations      # Módulo 5
+python -m src.conformal.run_conformal        # Módulo 6
+pytest tests/                                # 150 pruebas, sin descargar nada
+```
+
+Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), que es lo que domina el tiempo de arranque; el ajuste y el scoring de los detectores están cronometrados por separado en la tabla del Módulo 3. Las pruebas unitarias corren en segundos porque usan datos sintéticos y no tocan el dataset.
+
+## Limitaciones conocidas
+
+- **PaySim es sintético.** El fraude se inyecta con una regla fija, lo que explica el resultado nulo del detector secuencial: el simulador no modela comportamiento de cuenta mula. Los números de este repositorio miden algoritmos sobre un simulador, no rendimiento esperado en producción.
+- **Los Módulos 2 a 4 usan un conjunto de prueba enriquecido al 14,1%** para tener suficientes anomalías con las que medir Precision@k con estabilidad. Sus PR-AUC no son trasladables a la prevalencia real. El Módulo 5 corrige eso con prevalencia natural, y por eso sus números son mucho más bajos.
+- **Las features son linealmente dependientes por construcción**: las dummies de `type_*` suman 1 y los `errorBalance*` son combinaciones exactas de montos y saldos. Mahalanobis lo resuelve con pseudo-inversa, pero es la causa de la advertencia de rango incompleto que emite scikit-learn.
+- **El costo de revisión es un supuesto de negocio**, no un dato. Se reporta el costo de equilibrio (3.375 por alerta) para que se pueda juzgar cuánto del resultado depende de esa elección.
+- **El Módulo 1 supervisado no se re-ejecutó** en la sesión que produjo estos números; sus métricas no se reportan.
+- **La degradación temporal se midió sobre 17 días.** No dice nada sobre horizontes más largos, y el volumen de PaySim se derrumba justo al final del mes, lo que deja los últimos días sin muestra suficiente para evaluar.
 
 ## Stack técnico
 

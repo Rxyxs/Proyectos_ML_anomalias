@@ -18,9 +18,10 @@ src.unsupervised.models funcione igual sobre todas:
 | OneClassSVMApprox    | Frontera con kernel      | Filas fuera de la envolvente aprendida de lo normal   |
 | HBOS                 | Histogramas por feature  | Valores raros en columnas individuales (muy rápido)   |
 | ECOD                 | Colas de la CDF empírica | Colas extremas, sin hiperparámetros ni distancias     |
+| LODA                 | Proyecciones aleatorias  | Dependencias entre columnas, a coste lineal           |
+| FastABOD             | Geometría angular        | Puntos al borde de la nube, sin depender de distancias|
 
-HBOS y ECOD se implementan desde cero (son de coste lineal y no requieren una dependencia
-extra); el resto se apoya en scikit-learn.
+HBOS, ECOD, LODA y FastABOD se implementan desde cero; el resto se apoya en scikit-learn.
 """
 from __future__ import annotations
 
@@ -289,8 +290,158 @@ class GMMDensity:
         return self.gmm_.score_samples(np.asarray(X, dtype=float))
 
 
+class LODA:
+    """LODA — Lightweight On-line Detector of Anomalies (Pevný, 2016).
+
+    Un ensemble de detectores deliberadamente malos. Cada miembro proyecta los datos sobre
+    un vector aleatorio **disperso** y estima la densidad de esa proyección con un histograma
+    unidimensional; el score final es el promedio de -log densidad sobre todas las
+    proyecciones. Ninguna proyección por separado detecta gran cosa, pero el promedio de
+    muchas aproxima la densidad conjunta a coste lineal.
+
+    Ahí está la diferencia con HBOS, que también usa histogramas: HBOS los arma sobre las
+    features originales y por lo tanto asume independencia entre columnas. LODA los arma
+    sobre combinaciones lineales aleatorias, así que sí captura dependencias — sin pagar el
+    costo de estimar una covarianza ni de calcular distancias.
+
+    Los vectores de proyección son dispersos (solo ~sqrt(d) entradas no nulas) por el motivo
+    del paper: proyectar sobre pocas dimensiones preserva mejor la estructura local que
+    hacerlo sobre todas, y además permite atribuir el score a features concretas.
+    """
+
+    def __init__(self, n_projections: int = 100, n_bins: int | None = None, random_state: int = 42):
+        self.n_projections = n_projections
+        self.n_bins = n_bins
+        self.random_state = random_state
+        self.projections_: np.ndarray | None = None
+        self.bin_edges_: list[np.ndarray] = []
+        self.bin_density_: list[np.ndarray] = []
+
+    def _make_projections(self, n_features: int, rng) -> np.ndarray:
+        n_nonzero = max(1, int(np.sqrt(n_features)))
+        projections = np.zeros((self.n_projections, n_features))
+        for i in range(self.n_projections):
+            chosen = rng.choice(n_features, size=n_nonzero, replace=False)
+            projections[i, chosen] = rng.normal(size=n_nonzero)
+        return projections
+
+    def fit(self, X) -> "LODA":
+        X = np.asarray(X, dtype=float)
+        rng = np.random.default_rng(self.random_state)
+        self.projections_ = self._make_projections(X.shape[1], rng)
+
+        n_bins = self.n_bins or max(5, int(np.sqrt(X.shape[0])))
+        projected = X @ self.projections_.T
+
+        self.bin_edges_, self.bin_density_ = [], []
+        for column in projected.T:
+            counts, edges = np.histogram(column, bins=n_bins)
+            width = np.diff(edges)
+            # Densidad normalizada: cuentas sobre (total * ancho del bin), o sea una densidad
+            # de probabilidad propiamente dicha, comparable entre proyecciones de distinta escala.
+            density = counts / (counts.sum() * width + EPS)
+            self.bin_edges_.append(edges)
+            self.bin_density_.append(density)
+        return self
+
+    def _per_projection_scores(self, X: np.ndarray) -> np.ndarray:
+        """-log densidad de cada fila en cada proyección, de forma (n_filas, n_proyecciones)."""
+        projected = X @ self.projections_.T
+        scores = np.empty_like(projected)
+
+        for j in range(projected.shape[1]):
+            edges, density = self.bin_edges_[j], self.bin_density_[j]
+            idx = np.clip(np.digitize(projected[:, j], edges[1:-1]), 0, len(density) - 1)
+            scores[:, j] = -np.log(density[idx] + EPS)
+        return scores
+
+    def score_samples(self, X) -> np.ndarray:
+        X = np.asarray(X, dtype=float)
+        return -self._per_projection_scores(X).mean(axis=1)
+
+    def feature_importance(self, X) -> np.ndarray:
+        """Contribución de cada feature al score, de forma (n_filas, n_features).
+
+        LODA permite atribuir sin ningún método externo: se compara el score promedio de las
+        proyecciones que usan la feature j contra el de las que no la usan. Una feature
+        irrelevante da diferencia cercana a cero; una que dispara la anomalía da diferencia
+        positiva. Es la propiedad que lo vuelve útil para explicarle una alerta a un analista.
+        """
+        X = np.asarray(X, dtype=float)
+        per_projection = self._per_projection_scores(X)
+        uses_feature = self.projections_ != 0
+
+        importance = np.zeros((X.shape[0], X.shape[1]))
+        for feature in range(X.shape[1]):
+            con = uses_feature[:, feature]
+            # Una feature usada por todas las proyecciones, o por ninguna, no admite
+            # comparación entre grupos: su atribución queda en cero.
+            if con.all() or not con.any():
+                continue
+            importance[:, feature] = (
+                per_projection[:, con].mean(axis=1) - per_projection[:, ~con].mean(axis=1)
+            )
+        return importance
+
+
+class FastABOD:
+    """Detección por ángulos (Kriegel et al., 2008), restringida a los k vecinos más cercanos.
+
+    Todos los detectores de distancia del repositorio comparten un problema: en dimensión
+    alta las distancias se concentran —todos los puntos terminan aproximadamente igual de
+    lejos entre sí— y el contraste que necesitan se desvanece. Los ángulos toleran mejor esa
+    concentración, y en eso se apoya este detector.
+
+    La intuición es geométrica: parado en un punto interior a la nube, el resto se ve en
+    todas las direcciones y los ángulos varían mucho. Parado en un punto del borde, todo lo
+    demás se ve hacia el mismo lado y la varianza de los ángulos se desploma. El score es esa
+    varianza — **más baja = más anómalo**, que es exactamente la convención de
+    `score_samples`, así que se devuelve sin invertir el signo.
+
+    La versión exacta compara todos los pares de puntos y es O(n^3). Acá se usa la
+    aproximación del paper: solo los `n_neighbors` vecinos más cercanos, lo que la baja a
+    O(n * k^2) y la vuelve utilizable sobre decenas de miles de filas.
+    """
+
+    def __init__(self, n_neighbors: int = 20, chunk_size: int = 2_000):
+        self.n_neighbors = n_neighbors
+        self.chunk_size = chunk_size
+        self.index_: NearestNeighbors | None = None
+        self.train_: np.ndarray | None = None
+
+    def fit(self, X) -> "FastABOD":
+        X = np.asarray(X, dtype=float)
+        self.train_ = X
+        self.index_ = NearestNeighbors(n_neighbors=self.n_neighbors, n_jobs=-1).fit(X)
+        return self
+
+    def score_samples(self, X) -> np.ndarray:
+        X = np.asarray(X, dtype=float)
+        _, neighbor_idx = self.index_.kneighbors(X)
+
+        variances = np.empty(X.shape[0])
+        # Se procesa por bloques: el tensor de diferencias es (bloque, k, d) y materializarlo
+        # entero para cientos de miles de filas no entra en memoria.
+        for start in range(0, X.shape[0], self.chunk_size):
+            stop = min(start + self.chunk_size, X.shape[0])
+            block = X[start:stop]
+            neighbors = self.train_[neighbor_idx[start:stop]]
+
+            diff = neighbors - block[:, None, :]
+            squared_norm = np.einsum("ijk,ijk->ij", diff, diff) + EPS
+
+            # <pa, pb> / (|pa|^2 |pb|^2) para todos los pares (a, b) de vecinos del punto p.
+            dot = np.einsum("ijk,ilk->ijl", diff, diff)
+            weighted = dot / (squared_norm[:, :, None] * squared_norm[:, None, :])
+
+            rows, cols = np.triu_indices(weighted.shape[1], k=1)
+            variances[start:stop] = weighted[:, rows, cols].var(axis=1)
+
+        return variances
+
+
 def build_detectors() -> dict:
-    """Instancia las siete familias complementarias con su configuración por defecto."""
+    """Instancia las nueve familias complementarias con su configuración por defecto."""
     return {
         "pca_reconstruction": PCAReconstruction(),
         "gmm_density": GMMDensity(),
@@ -299,4 +450,6 @@ def build_detectors() -> dict:
         "ocsvm_nystroem": OneClassSVMApprox(),
         "hbos": HBOS(),
         "ecod": ECOD(),
+        "loda": LODA(),
+        "abod": FastABOD(),
     }

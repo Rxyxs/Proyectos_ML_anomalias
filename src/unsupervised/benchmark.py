@@ -1,7 +1,7 @@
 """Módulo 3 — benchmark comparativo de todas las familias de detección de anomalías.
 
 Entrena, en el mismo split y con el mismo escalado, los detectores del módulo 2
-(Isolation Forest, LOF, MAD-z, autoencoder), las siete familias complementarias de
+(Isolation Forest, LOF, MAD-z, autoencoder), las nueve familias complementarias de
 `families.py` y los dos modelos profundos de una clase de `src/deep/one_class.py` (VAE y
 Deep SVDD), y encima de todos ellos los ensembles de `ensemble.py`.
 
@@ -59,6 +59,8 @@ MODEL_FAMILY = {
     "mad_baseline": "Estadístico por feature",
     "hbos": "Estadístico por feature",
     "ecod": "Estadístico por feature",
+    "loda": "Proyecciones aleatorias",
+    "abod": "Geometría angular",
     "robust_mahalanobis": "Covarianza robusta",
     "gmm_density": "Densidad paramétrica",
     "ocsvm_nystroem": "Frontera con kernel",
@@ -79,6 +81,8 @@ FAMILY_COLORS = {
     "Covarianza robusta": "#6d4c41",
     "Densidad paramétrica": "#9c27b0",
     "Frontera con kernel": "#f9a825",
+    "Proyecciones aleatorias": "#5d4037",
+    "Geometría angular": "#ad1457",
     "Reconstrucción": "#4caf50",
     "Densidad profunda": "#7e57c2",
     "Una clase profunda": "#0097a7",
@@ -97,6 +101,8 @@ MODEL_LABELS = {
     "ocsvm_nystroem": "One-Class SVM (Nyström)",
     "hbos": "HBOS",
     "ecod": "ECOD",
+    "loda": "LODA",
+    "abod": "FastABOD",
     "vae": "VAE (ELBO)",
     "deep_svdd": "Deep SVDD",
     "ensemble_rank_avg": "Ensemble — promedio de rangos",

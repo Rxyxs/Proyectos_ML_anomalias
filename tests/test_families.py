@@ -11,6 +11,8 @@ import pytest
 from src.unsupervised.families import (
     ECOD,
     HBOS,
+    LODA,
+    FastABOD,
     GMMDensity,
     KNNDistance,
     OneClassSVMApprox,
@@ -30,13 +32,14 @@ def normal_data() -> np.ndarray:
 
 def test_build_detectors_expone_la_api_homogenea():
     detectores = build_detectors()
-    assert len(detectores) == 7
+    assert len(detectores) == 9
     for nombre, detector in detectores.items():
         assert hasattr(detector, "fit"), nombre
         assert hasattr(detector, "score_samples"), nombre
 
 
-@pytest.mark.parametrize("factory", [HBOS, ECOD, KNNDistance, RobustMahalanobis, GMMDensity, OneClassSVMApprox])
+@pytest.mark.parametrize("factory", [HBOS, ECOD, KNNDistance, RobustMahalanobis, GMMDensity,
+                                    OneClassSVMApprox, LODA, FastABOD])
 def test_detectores_puntuan_mas_alto_un_punto_extremo(factory, normal_data):
     detector = factory().fit(normal_data)
     scores = anomaly_score(detector, np.array([[0.0, 0.0, 0.0, 0.0], [30.0, 30.0, 30.0, 30.0]]))
@@ -46,7 +49,8 @@ def test_detectores_puntuan_mas_alto_un_punto_extremo(factory, normal_data):
     assert scores[1] > scores[0]
 
 
-@pytest.mark.parametrize("factory", [HBOS, ECOD, KNNDistance, RobustMahalanobis, GMMDensity, OneClassSVMApprox])
+@pytest.mark.parametrize("factory", [HBOS, ECOD, KNNDistance, RobustMahalanobis, GMMDensity,
+                                    OneClassSVMApprox, LODA, FastABOD])
 def test_detectores_devuelven_un_score_por_fila(factory, normal_data):
     detector = factory().fit(normal_data)
     assert anomaly_score(detector, normal_data).shape == (len(normal_data),)
@@ -146,3 +150,72 @@ def test_one_class_svm_aproximado_es_reproducible(normal_data):
     primero = anomaly_score(OneClassSVMApprox(random_state=1).fit(normal_data), punto)
     segundo = anomaly_score(OneClassSVMApprox(random_state=1).fit(normal_data), punto)
     np.testing.assert_allclose(primero, segundo)
+
+
+def test_loda_captura_dependencias_que_hbos_no_ve():
+    # HBOS arma histogramas sobre las features originales, así que asume independencia y no
+    # puede ver una correlación rota. LODA los arma sobre proyecciones aleatorias y sí.
+    rng = np.random.default_rng(7)
+    base = rng.normal(size=3000)
+    X = np.column_stack([base, base + rng.normal(scale=0.05, size=3000)])
+
+    coherente = np.array([[2.0, 2.0]])
+    incoherente = np.array([[2.0, -2.0]])
+
+    loda = LODA(n_projections=200).fit(X)
+    assert anomaly_score(loda, incoherente)[0] > anomaly_score(loda, coherente)[0]
+
+
+def test_loda_es_reproducible_con_la_misma_semilla(normal_data):
+    punto = np.array([[12.0, 12.0, 12.0, 12.0]])
+    primero = anomaly_score(LODA(random_state=3).fit(normal_data), punto)
+    segundo = anomaly_score(LODA(random_state=3).fit(normal_data), punto)
+    np.testing.assert_allclose(primero, segundo)
+
+
+def test_las_proyecciones_de_loda_son_dispersas(normal_data):
+    # El paper usa ~sqrt(d) entradas no nulas por proyección; con 4 features son 2.
+    loda = LODA(n_projections=50).fit(normal_data)
+    no_nulas = (loda.projections_ != 0).sum(axis=1)
+    np.testing.assert_array_equal(no_nulas, 2)
+
+
+def test_la_atribucion_de_loda_senala_la_feature_responsable():
+    # Solo la tercera columna es anómala en el punto consultado; su aporte debe dominar.
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(3000, 5))
+    punto = np.zeros((1, 5))
+    punto[0, 2] = 12.0
+
+    importancia = LODA(n_projections=300, random_state=0).fit(X).feature_importance(punto)
+
+    assert importancia.shape == (1, 5)
+    assert int(np.argmax(importancia[0])) == 2
+
+
+def test_abod_devuelve_varianza_baja_para_un_punto_al_borde():
+    # Un punto lejano ve toda la nube en la misma dirección: la varianza de sus ángulos
+    # colapsa. score_samples devuelve esa varianza, y más baja significa más anómalo.
+    rng = np.random.default_rng(2)
+    X = rng.normal(size=(800, 3))
+
+    abod = FastABOD(n_neighbors=15).fit(X)
+    scores = abod.score_samples(np.vstack([np.zeros((1, 3)), np.full((1, 3), 30.0)]))
+
+    assert scores[1] < scores[0]
+    assert anomaly_score(abod, np.full((1, 3), 30.0))[0] > anomaly_score(abod, np.zeros((1, 3)))[0]
+
+
+def test_abod_procesa_por_bloques_sin_cambiar_el_resultado(normal_data):
+    # El troceado existe por memoria, no por semántica: partir en bloques no puede alterar
+    # el score de ninguna fila.
+    entero = FastABOD(n_neighbors=10, chunk_size=10_000).fit(normal_data).score_samples(normal_data)
+    troceado = FastABOD(n_neighbors=10, chunk_size=37).fit(normal_data).score_samples(normal_data)
+    np.testing.assert_allclose(entero, troceado, rtol=1e-10)
+
+
+def test_abod_tolera_un_punto_identico_a_uno_de_entrenamiento(normal_data):
+    # Un vecino a distancia cero divide por cero sin el epsilon de la implementación.
+    abod = FastABOD(n_neighbors=10).fit(normal_data)
+    scores = abod.score_samples(normal_data[:5])
+    assert np.isfinite(scores).all()
