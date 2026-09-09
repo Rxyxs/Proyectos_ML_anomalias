@@ -3,9 +3,9 @@
 # Bank Anomaly Detection
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-15%20detectors-F7931E?logo=scikitlearn&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectors-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -26,8 +26,10 @@ Six modules, 15 transaction-level detectors, one account-level detector and thre
 | The best detector by PR-AUC is **undeployable**: it promises 0.1% false alarms and delivers 35%. Ranking stability and scale stability are separate properties. | [Module 5](#the-threshold-promised-versus-delivered) |
 | The **conformal guarantee** fixes the threshold under exchangeability and breaks exactly like the quantile when exchangeability fails. Its contribution is making the assumption explicit, not removing it. | [Module 6](#module-6-new-methods-and-coverage-guarantees) |
 | Adding methods **doesn't always add coverage**: the two new detectors produce the repository's first redundant pairs (ρ up to 0.99). | [Module 6](#adding-detectors-is-not-the-same-as-adding-coverage) |
+| **Fifty labels well spent beat a thousand at random**: at 0.08% prevalence, random sampling finds not one positive up to 500 labels. | [Module 7](#fifty-labels-well-spent-beat-a-thousand-at-random) |
+| Randomly-structured detectors **get diluted** by irrelevant features. One mechanism explains both LODA's and Half-Space Trees' weak showing. | [Module 7](#why-its-weak-and-why-that-also-explains-loda) |
 
-Two methodological corrections surfaced along the way and are documented: a random split over chronologically ordered data (fixed in Module 5) and a daily PR-AUC that showed a spectacular improvement over 23 transactions (fixed with a volume filter and by switching to ROC-AUC).
+Eight methodological errors surfaced along the way and are documented with their fixes in [a section of their own](#methodological-errors-found-and-corrected), together with two of my own hypotheses that the data refuted.
 
 ## Module map
 
@@ -39,10 +41,11 @@ Two methodological corrections surfaced along the way and are documented: a rand
 | **4 — Deep and sequential** | Is the margin in the depth or in the objective? What if we look at the account's history? | `src/deep/train_deep.py` | [04](notebooks/04_modelos_profundos_y_secuencias.ipynb) |
 | **5 — Operations** | Where do I cut the score, how much money does it save, and will it still work next month? | `src/operations/run_operations.py` | [05](notebooks/05_umbral_costo_y_drift.ipynb) |
 | **6 — Guarantees** | Can the false-alarm rate be *guaranteed* rather than estimated? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
+| **7 — Drift and labels** | How does a detector adapt on its own, and what do I do when a few labels appear? | `src/adaptive/run_adaptive.py` | [07](notebooks/07_deriva_y_etiquetas.ipynb) |
 
 ## Honest note on validation
 
-The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, and `python -m src.conformal.run_conformal` for Module 6, plus **150/150 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
+The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, `python -m src.conformal.run_conformal` for Module 6, and `python -m src.adaptive.run_adaptive` for Module 7, plus **185/185 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
 
 Two caveats you need in order to read the metrics correctly:
 
@@ -74,6 +77,7 @@ flowchart LR
     C --> M["run_operations.py<br/>temporal split, threshold, cost, drift"]
     M --> H
     C --> N["run_conformal.py<br/>conformal p-values, guaranteed coverage"]
+    C --> O["run_adaptive.py<br/>streaming, stacking and active learning"]
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -89,7 +93,8 @@ bank-anomaly-detection/
 │   ├── 03_benchmark_familias_anomalias.ipynb   # Module 3: detector-family benchmark + ensembles
 │   ├── 04_modelos_profundos_y_secuencias.ipynb # Module 4: VAE, Deep SVDD and sequential detector
 │   ├── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
-│   └── 06_metodos_nuevos_y_conformal.ipynb     # Module 6: LODA, FastABOD and conformal detection
+│   ├── 06_metodos_nuevos_y_conformal.ipynb     # Module 6: LODA, FastABOD and conformal detection
+│   └── 07_deriva_y_etiquetas.ipynb             # Module 7: streaming, stacking, active learning
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Download (kagglehub) and load the PaySim dataset
@@ -122,11 +127,16 @@ bank-anomaly-detection/
 │   ├── conformal/               # Module 6: p-values with a coverage guarantee
 │   │   ├── conformal.py         # Conformal p-values, threshold, coverage report
 │   │   └── run_conformal.py     # Exchangeability-versus-drift experiment
+│   ├── adaptive/                # Module 7: drift and scarce labels
+│   │   ├── hs_trees.py          # Half-Space Trees with a sliding window
+│   │   ├── stacking.py          # The 16 detectors' scores as features
+│   │   ├── active.py            # Selection strategies for review
+│   │   └── run_adaptive.py      # Module 7's three experiments
 │   └── utils/                  # Shared helper functions
 ├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
 │                           # autoencoder, metrics store, families, ensembles,
 │                           # deep models, sequences, thresholds, costs, temporal,
-│                           # conformal detection
+│                           # conformal detection, streaming, stacking, active
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -140,6 +150,26 @@ Every module under `src/` exposes pure, documented functions meant to be importe
 **PaySim** is a mobile financial-transaction simulator based on aggregated data from a real mobile money service provider, extended to include injected fraudulent behavior. It includes transaction types like `CASH-IN`, `CASH-OUT`, `DEBIT`, `PAYMENT`, and `TRANSFER`, along with origin and destination balances before and after each operation.
 
 The `isFraud` target column indicates whether a transaction was fraudulent, while `isFlaggedFraud` marks illegitimate mass transfers flagged by the simulated business rules.
+
+### Dataset schema
+
+| Column | Type | Description | Use in this repository |
+|---|---|---|---|
+| `step` | integer | Simulated hour, 1 to 743 (31 days) | Module 5's temporal cut, the sequential detector's cadence |
+| `type` | categorical | `CASH_IN`, `CASH_OUT`, `DEBIT`, `PAYMENT`, `TRANSFER` | Turned into five dummies |
+| `amount` | float | Transaction amount | A feature, and the basis of every money metric |
+| `nameOrig` | text | Origin account | **Dropped**: 99.85% appear exactly once |
+| `oldbalanceOrg` / `newbalanceOrig` | float | Origin balance before and after | Features, and the basis of `errorBalanceOrig` |
+| `nameDest` | text | Destination account | Dropped in Modules 1-3; **recovered** in Module 4 for the sequences |
+| `oldbalanceDest` / `newbalanceDest` | float | Destination balance before and after | Features, and the basis of `errorBalanceDest` |
+| `isFraud` | binary | Target label | Never used when fitting unsupervised detectors |
+| `isFlaggedFraud` | binary | Flag from the simulated business rules | Dropped: it's another system's output, not a feature |
+
+On top of that, four features are built in `build_features.py`. Two of them carry nearly all of the dataset's signal, which is why the randomly-structured detectors (LODA, Half-Space Trees) do poorly:
+
+- `errorBalanceOrig` = `newbalanceOrig + amount - oldbalanceOrg` — how much the origin balance fails to reconcile;
+- `errorBalanceDest` = `oldbalanceDest + amount - newbalanceDest` — the same on the destination side;
+- `origBalanceZero` / `destBalanceZero` — flags for a zero balance before the operation.
 
 ## Installation
 
@@ -185,7 +215,7 @@ Comparative benchmark of detector families (Module 3):
 python -m src.unsupervised.benchmark
 ```
 
-Trains all 15 detectors on the same split and scaling, builds the three ensembles on top of their scores, prints the comparison table with metrics and timings, reports which detector pairs are redundant, and saves the ranking, PR curves, and correlation matrix to `data/processed/figures/`, plus one row per detector in the `benchmark_metrics` table of `data/processed/metrics.duckdb`.
+Trains all 16 detectors on the same split and scaling, builds the three ensembles on top of their scores, prints the comparison table with metrics and timings, reports which detector pairs are redundant, and saves the ranking, PR curves, and correlation matrix to `data/processed/figures/`, plus one row per detector in the `benchmark_metrics` table of `data/processed/metrics.duckdb`.
 
 Deep models and sequential detector (Module 4):
 
@@ -210,6 +240,14 @@ python -m src.conformal.run_conformal
 ```
 
 Wraps the detectors in a conformal calibrator and compares the observed false-alarm rate against the guaranteed one in two scenarios: one where exchangeability holds by construction and one where evaluation moves to the later period. LODA and FastABOD join Module 3's benchmark, which grows from 13 to 15 detectors.
+
+Drift and scarce labels (Module 7):
+
+```bash
+python -m src.adaptive.run_adaptive
+```
+
+Compares Half-Space Trees with a fixed window against one refreshed daily, measures how much the 16 detectors' scores contribute as classifier features across labeling budgets, and simulates the review loop with five selection strategies.
 
 ## Module 2: Unknown / zero-day fraud detection (unsupervised)
 
@@ -285,23 +323,24 @@ The three **ensembles** address the fact that these scores live on incompatible 
 
 | Detector | Family | PR-AUC | ROC-AUC | Precision@100 | fit (s) | score (s) |
 |---|---|---|---|---|---|---|
-| Gaussian Mixture | Parametric density | **0.807** | 0.948 | 0.99 | 5.27 | 0.11 |
-| Local Outlier Factor | Local density | 0.802 | 0.932 | **1.00** | 0.65 | 1.12 |
-| Deep SVDD | Deep one-class | 0.702 | 0.860 | **1.00** | 7.08 | 0.006 |
-| Robust Mahalanobis (MCD) | Robust covariance | 0.698 | 0.896 | 0.94 | 1.24 | 0.008 |
-| FastABOD | Angular geometry | 0.682 | 0.888 | **1.00** | 0.11 | 1.81 |
-| Ensemble — rank average | Ensemble | 0.628 | 0.873 | **1.00** | — | 0.03 |
-| Autoencoder (ReLU) | Non-linear reconstruction | 0.581 | 0.850 | 0.97 | 8.19 | 0.01 |
-| kNN (k-th distance) | Global distance | 0.552 | 0.853 | 0.85 | 0.10 | 1.14 |
-| Isolation Forest | Isolation | 0.549 | 0.850 | 0.55 | 0.56 | 0.40 |
-| One-Class SVM (Nyström) | Kernel boundary | 0.494 | 0.830 | 0.86 | 0.35 | 0.40 |
-| PCA (reconstruction) | Linear reconstruction | 0.487 | 0.822 | 0.76 | 0.003 | 0.01 |
-| HBOS | Per-feature statistical | 0.480 | 0.800 | 0.59 | 0.006 | 0.02 |
-| Ensemble — z average | Ensemble | 0.476 | 0.826 | 0.94 | — | 0.03 |
-| Ensemble — z max | Ensemble | 0.462 | 0.851 | 0.80 | — | 0.03 |
-| VAE (ELBO) | Deep density | 0.446 | 0.731 | 0.90 | 13.04 | 0.07 |
-| LODA | Random projections | 0.354 | 0.776 | 0.36 | 0.05 | 0.18 |
-| ECOD | Empirical CDF tails | 0.273 | 0.672 | 0.52 | 0.02 | 0.12 |
+| Gaussian Mixture | Parametric density | **0.807** | 0.948 | 0.99 | 4.63 | 0.11 |
+| Local Outlier Factor | Local density | 0.802 | 0.932 | **1.00** | 0.61 | 1.07 |
+| Deep SVDD | Deep one-class | 0.702 | 0.860 | **1.00** | 5.56 | 0.004 |
+| Robust Mahalanobis (MCD) | Robust covariance | 0.698 | 0.896 | 0.94 | 1.18 | 0.007 |
+| FastABOD | Angular geometry | 0.682 | 0.888 | **1.00** | 0.09 | 1.62 |
+| Ensemble — rank average | Ensemble | 0.626 | 0.875 | **1.00** | — | 0.03 |
+| Autoencoder (ReLU) | Non-linear reconstruction | 0.581 | 0.850 | 0.97 | 6.66 | 0.007 |
+| kNN (k-th distance) | Global distance | 0.552 | 0.853 | 0.85 | 0.09 | 1.01 |
+| Isolation Forest | Isolation | 0.549 | 0.850 | 0.55 | 0.51 | 0.36 |
+| One-Class SVM (Nyström) | Kernel boundary | 0.494 | 0.830 | 0.86 | 0.31 | 0.36 |
+| Ensemble — z average | Ensemble | 0.493 | 0.837 | 0.94 | — | 0.03 |
+| PCA (reconstruction) | Linear reconstruction | 0.487 | 0.822 | 0.76 | 0.002 | 0.01 |
+| HBOS | Per-feature statistical | 0.480 | 0.800 | 0.59 | 0.005 | 0.02 |
+| Ensemble — z max | Ensemble | 0.472 | 0.854 | 0.80 | — | 0.03 |
+| Half-Space Trees | Adaptive streaming | 0.458 | 0.788 | 0.60 | 0.13 | 0.25 |
+| VAE (ELBO) | Deep density | 0.446 | 0.731 | 0.90 | 10.21 | 0.05 |
+| LODA | Random projections | 0.354 | 0.776 | 0.36 | 0.04 | 0.15 |
+| ECOD | Empirical CDF tails | 0.273 | 0.672 | 0.52 | 0.01 | 0.11 |
 | MAD-z (baseline) | Per-feature statistical | 0.140 | 0.383 | 0.14 | 0.01 | 0.007 |
 
 ![Ranking by family](data/processed/figures/benchmark_ranking.png)
@@ -311,7 +350,7 @@ The three **ensembles** address the fact that these scores live on incompatible 
 - **Gaussian Mixture (0.807) and LOF (0.802) tie at the top, but for different reasons.** Their Spearman correlation is only 0.41, and their PR curves cross: LOF dominates between recall 0.4 and 0.8, GMM overtakes it above 0.85. Which one you want depends on the team's review capacity, not on aggregate PR-AUC.
 - **The linear ablation justifies the autoencoder, but only just.** The autoencoder (0.581) beats PCA (0.487) — the non-linearity is worth a real ~0.09 of PR-AUC. What those 0.09 cost: 9.6 s of fitting against 0.002 s, plus a PyTorch dependency. Neither one comes close to GMM.
 - **The MAD-z baseline isn't just weak, it's anti-informative** (ROC-AUC 0.383, below the 0.5 of random guessing). Looking at each column separately fails here because PaySim fraud is a full drain of the origin balance: every individual value stays inside the observed range, while the heavy tails of legitimate transactions *do* produce extreme z-scores. That is exactly the argument for multivariate methods — and the reason to include Mahalanobis (0.698), which sees the same information but through the full covariance.
-- **The ensembles don't win, and that is also a result.** The best of them (rank average, 0.639) lands below GMM and LOF: averaging 15 detectors when most are mediocre drags the two good ones down. An ensemble helps when its members are of comparable quality, not when best and worst differ by 0.67 of PR-AUC. With one operationally relevant exception: **Precision@100 = 1.00** for the rank average — at the head of the ranking the consensus *is* perfect, and that head is exactly where an analyst looks.
+- **The ensembles don't win, and that is also a result.** The best of them (rank average, 0.639) lands below GMM and LOF: averaging 16 detectors when most are mediocre drags the two good ones down. An ensemble helps when its members are of comparable quality, not when best and worst differ by 0.67 of PR-AUC. With one operationally relevant exception: **Precision@100 = 1.00** for the rank average — at the head of the ranking the consensus *is* perfect, and that head is exactly where an analyst looks.
 
 ### Which detectors are redundant?
 
@@ -549,7 +588,95 @@ Under exchangeability the p-values of legitimate transactions are **uniform on [
 
 None of the four is perfectly uniform, so there is drift everywhere. What sets Deep SVDD apart isn't the overall shape but the mass piled up **near zero**: its first bin reaches a density of 24 against the 1 a uniform would give, and that left tail is exactly what determines the false-alarm rate at small α.
 
-## The 15 detectors at a glance
+## Module 7: Drift and labels — the two problems left open
+
+Modules 5 and 6 reached the same conclusion by independent routes: **no fixed threshold learned from the past survives**. Neither proposed what to do about it.
+
+And there's a second, larger gap. The repository lives at two extremes: Module 1 uses all 6.3 million labels in the dataset, Modules 2 to 6 use none. The real case looks like neither — a fraud team has a handful of confirmed cases and millions of unreviewed transactions.
+
+| Method | Problem it attacks | Implemented in |
+|---|---|---|
+| **Half-Space Trees** | A detector that updates itself, with no retraining and no labels | `adaptive/hs_trees.py` |
+| **Semi-supervised stacking** | The 16 detectors as features of a classifier with few labels | `adaptive/stacking.py` |
+| **Active learning** | Review capacity produces labels: where should it be spent? | `adaptive/active.py` |
+
+### Half-Space Trees: adapting costs one linear pass
+
+The other sixteen detectors share an assumption: fit once, use forever. Half-Space Trees (Tan, Ting and Liu, 2011) is designed the other way around — it maintains a **mass profile** of a recent window that refreshes itself.
+
+The idea is clever and cheap: the trees are built **before seeing a single data point**. Each node splits the space in half along a random dimension, so the structure doesn't depend on the sample; all that's learned is how many points land in each node. Updating the model is recounting — one linear pass — instead of refitting, and it **needs no labels at all**.
+
+![Adaptive streaming](data/processed/figures/adaptive_streaming.png)
+
+On the temporal split, refreshing the window with each day's traffic: **0.586 mean ROC-AUC against 0.569 with a fixed window**. It helps, but not much. And in absolute terms it's a weak detector — Gaussian Mixture reaches 0.96 on the same split, and in the batch benchmark HS-Trees lands 15th at PR-AUC 0.458.
+
+### Why it's weak, and why that also explains LODA
+
+My first hypothesis was the same one that broke the VAE in Module 4: heavy tails. HS-Trees normalizes by the window's min/max, and with values reaching ±1900, 99% of the data gets crushed into a sliver.
+
+**The hypothesis turned out to be false.** On synthetic data with equally heavy tails — 87% of rows inside 1% of the range — HS-Trees still scores 0.985 ROC-AUC. The cause is something else, isolated with a controlled experiment: fix the signal in two features and add irrelevant columns.
+
+| Noise dimensions | HS-Trees | LODA | Gaussian Mixture |
+|---|---|---|---|
+| 0 | 1.000 | 1.000 | 1.000 |
+| 10 | 0.999 | 0.999 | 1.000 |
+| 20 | 0.963 | — | 0.998 |
+| 30 | **0.904** | **0.937** | **0.9995** |
+
+**HS-Trees and LODA build their structure at random, without looking at the data**, so they spread their capacity evenly across every dimension. If the signal lives in a few features — in PaySim it's in `errorBalanceOrig` and `errorBalanceDest` — adding irrelevant columns dilutes it. A model that estimates density from the data doesn't budge.
+
+It's the same cause behind LODA's weak PR-AUC in Module 6. Two modules, one mechanism, verified with an experiment rather than assumed — and pinned by a unit test (`test_la_estructura_aleatoria_se_diluye_con_features_irrelevantes`).
+
+### Fifty labels well spent beat a thousand at random
+
+The XGBOD idea (Zhao and Hryniewicki, 2018): use the sixteen detectors' scores as **additional features** of a supervised classifier. The detectors already distilled the structure of "normal" without spending a label; the classifier only has to learn how to combine them, which is a far smaller problem.
+
+But how the budget is spent matters more than the model. Labeling 50 random transactions at 0.08% prevalence yields **0.04 expected frauds**: nothing to train on. A real team labels the alert queue it reviews, and that bias toward high scores is what makes the set usable.
+
+| Labels | Frauds found | Features only | Features + scores |
+|---|---|---|---|
+| 50 | 10 | 0.153 | **0.220** |
+| 100 | 16 | 0.165 | **0.194** |
+| 200 | 25 | 0.225 | **0.236** |
+| 500 | 51 | **0.502** | 0.445 |
+| 1,000 | 65 | 0.458 | **0.715** |
+| 5,000 | 91 | 0.712 | **0.935** |
+
+*(PR-AUC on the later period; label-free reference — Gaussian Mixture — 0.263.)*
+
+![Label budget](data/processed/figures/adaptive_label_budget.png)
+
+With **50 reviewed transactions** the stacked model already nearly matches the unsupervised detector that ordered that very queue. With 5,000 it reaches 0.935, more than **three times** the reference. The fifteen detectors from earlier modules earn their keep as features even if none is deployed on its own.
+
+Labeling at random, by contrast, **finds not a single fraud up to 500 labels** and leaves no classifier to train. A caveat about that block: the row with 1,000 random labels and a single positive shows 0.89 PR-AUC, and that is not a result — with one positive example the variance is enormous and the number is noise.
+
+### A badly designed experiment, and its correction
+
+Review capacity produces labels, so the operational question changes: it's no longer just "which alerts do I review today" but "which alerts are worth reviewing to detect better tomorrow".
+
+The first version of this experiment compared three strategies: `random`, `top_score` (exploit the alert queue) and `uncertainty` (explore where the model hesitates). The result looked clear and counterintuitive — exploring won, and found twice as much fraud along the way.
+
+**It was a badly designed experiment.** `top_score` always ranked by the unsupervised score, a static queue, while `uncertainty` consulted the supervised model that improved round after round. The comparison conflated two variables: exploit versus explore, **and** fixed ranker versus learning ranker. The fix is to add `top_model`: the same exploitation, ranked by the model being retrained.
+
+| Strategy | PR-AUC at 400 labels | Frauds found |
+|---|---|---|
+| `random` | — (never finds a positive) | **0** |
+| `top_score` (static queue) | 0.641 | 45 |
+| `top_model` (learning queue) | **0.941** | **97** |
+| `uncertainty` (explore) | **0.959** | 91 |
+| `hybrid` (half and half) | 0.952 | 96 |
+
+![Active learning](data/processed/figures/adaptive_active_learning.png)
+
+With the variable isolated, the conclusion flips:
+
+- **The big jump comes from letting the queue learn**, not from exploring: 0.641 → 0.941.
+- **Exploring adds little on top of that**: 0.959 against 0.941, a gap within single-seed noise.
+- And **there's almost no explore/exploit tension** in this dataset: `top_model` finds *more* fraud than `uncertainty` (97 against 91) while learning practically the same amount.
+
+Without the control strategy I would have published "exploring beats exploiting", which is false.
+
+## The 16 detectors at a glance
 
 All trained on normal transactions only, all following scikit-learn's `fit` / `score_samples` convention (lower = more anomalous), all comparable against each other on Module 3's split.
 
@@ -566,12 +693,22 @@ All trained on normal transactions only, all following scikit-learn's `fit` / `s
 | One-Class SVM (Nyström) | Kernel boundary | 3 | 0.494 | 0.830 | `unsupervised/families.py` |
 | PCA (reconstruction) | Linear reconstruction | 3 | 0.487 | 0.822 | `unsupervised/families.py` |
 | HBOS | Per-feature statistical | 3 | 0.480 | 0.800 | `unsupervised/families.py` |
+| Half-Space Trees | Adaptive streaming | 7 | 0.458 | 0.788 | `adaptive/hs_trees.py` |
 | VAE (ELBO) | Deep density | 4 | 0.446 | 0.731 | `deep/one_class.py` |
 | LODA | Random projections | 6 | 0.354 | 0.776 | `unsupervised/families.py` |
 | ECOD | Empirical CDF tails | 3 | 0.273 | 0.672 | `unsupervised/families.py` |
 | MAD-z | Per-feature statistical | 2 | 0.140 | 0.383 | `unsupervised/models.py` |
 
-Plus: three **ensemble** strategies (`unsupervised/ensemble.py`), a per-destination-account **GRU autoencoder** (`deep/sequences.py`, evaluated on accounts and therefore outside this table), and a **conformal** wrapper applicable to any of the fifteen (`conformal/conformal.py`).
+Plus: three **ensemble** strategies (`unsupervised/ensemble.py`), a per-destination-account **GRU autoencoder** (`deep/sequences.py`, evaluated on accounts and therefore outside this table), a **conformal** wrapper applicable to any of the sixteen (`conformal/conformal.py`), and a **stacked classifier** that uses all of them as features (`adaptive/stacking.py`).
+
+## The conventions that make sixteen detectors comparable
+
+Putting an Isolation Forest, a PyTorch autoencoder, a Gaussian mixture and a streaming tree ensemble in the same table isn't free. It rests on four decisions held across every module:
+
+- **A single score convention.** Every detector exposes `fit` and `score_samples` scikit-learn style, where **lower = more anomalous**. `anomaly_score()` flips the sign once and from there the whole repository speaks one language. The PyTorch models are wrapped to respect it; FastABOD satisfies it without any flip, because its angle variance is already low for anomalies.
+- **Training on normal transactions only.** No detector sees a fraud label during fitting, not even indirectly. That's what makes "unsupervised" an honest label, and what lets them be compared against Module 7's, which do use labels.
+- **The same split and the same scaling for everyone.** `RobustScaler` fitted on the training set alone, and fixed seeds throughout. Any difference between two rows of the table belongs to the model, not to the data it happened to get.
+- **Each unit of analysis in its own table.** The sequential detector scores *accounts*, not transactions, so it lives in `sequence_metrics` rather than `benchmark_metrics`. The separation is structural on purpose: a careless `ORDER BY` can't end up comparing two different problems.
 
 ## How to read the metrics
 
@@ -599,7 +736,8 @@ python -m src.unsupervised.benchmark         # Module 3 (+ Module 4's VAE and De
 python -m src.deep.train_deep                # Module 4
 python -m src.operations.run_operations      # Module 5
 python -m src.conformal.run_conformal        # Module 6
-pytest tests/                                # 150 tests, no download needed
+python -m src.adaptive.run_adaptive          # Module 7
+pytest tests/                                # 185 tests, no download needed
 ```
 
 Every module starts by loading and cleaning the CSV's 6,362,620 rows (493 MB), which is what dominates startup time; detector fit and scoring are timed separately in Module 3's table. The unit tests run in seconds because they use synthetic data and never touch the dataset.
@@ -612,6 +750,36 @@ Every module starts by loading and cleaning the CSV's 6,362,620 rows (493 MB), w
 - **The review cost is a business assumption**, not data. The break-even cost (3,375 per alert) is reported so you can judge how much of the result depends on that choice.
 - **Module 1 (supervised) was not re-run** in the session that produced these numbers; its metrics aren't reported.
 - **Temporal degradation was measured over 17 days.** It says nothing about longer horizons, and PaySim's volume collapses right at the end of the month, leaving the final days without enough sample to evaluate.
+
+## Methodological errors found and corrected
+
+This section exists because measurement errors **look a lot like good results**, and several on this list did produce a number worth publishing. Each was caught by reading the output, not by a failing test.
+
+| Error | How it looked | How it was caught | Correction |
+|---|---|---|---|
+| Random split over chronologically ordered data (Modules 2-4) | Metrics higher than production would give | Asking what happens when the model is evaluated forward in time | Temporal split in Module 5 |
+| Daily PR-AUC "improving" to 1.0000 | All four detectors perfect on the last day | The last day held **23 transactions** | Minimum-volume filter + ROC-AUC, which doesn't track prevalence |
+| Review cost below break-even | Optima of 300,000 alerts: review everything | Computing the break-even cost (3,375) and comparing to the assumption (1,000) | Cost above break-even, and the break-even reported |
+| Comparing Module 3's PR-AUC against Module 5's | A collapse from 0.807 to 0.263 | PR-AUC depends on prevalence, which went from 14.1% to 0.23% | Compare with ROC-AUC and with detector ordering |
+| VAE with loss summed over 15 features | `NaN` in the first epoch on real data | Measuring the actual scale after `RobustScaler`: sum of squares at 3.7e6 | Average instead of sum, clamp log-variance, clip gradients |
+| Active learning with two confounded variables | "Exploring beats exploiting", and finds twice the fraud | The static queue and the learning queue weren't comparable | Control strategy `top_model`; the conclusion flipped |
+| A test tolerance set by eye | Failed at α=0.001 with nothing wrong in the code | Binomial error at n=50,000 is ±0.00014 | Tolerance derived from sampling noise |
+| A data generator that moved two things at once | A dilution test that didn't reproduce the measured effect | The noise consumed the generator and shifted the signal too | Separate generators for signal and noise |
+
+Two of my own hypotheses were **refuted by the data** and are documented as such, because a fix that doesn't work is as informative as one that does:
+
+- *"Deep SVDD's threshold fails from overfitting; calibrating on held-out data fixes it."* It doesn't — 0.389 against 0.354. That ruled out overfitting and located the cause in the temporal drift of the score's scale.
+- *"The sequential detector fails because averaging dilutes the single anomalous transaction."* All four aggregations land the same (0.099-0.107). The problem is that PaySim doesn't model mule-account behavior.
+
+## What I'd do differently with real data
+
+The limitations above aren't excuses: each suggests a concrete change, and several are half-built already.
+
+- **The sequential detector has the most to gain.** It's built and tested, and its null result is attributable to the simulator, which picks fraud destinations without modeling mule-account behavior. On real AML transactions — where mules do have a behavioral signature — it's the family with the most to contribute, and no new code would be needed.
+- **Continuous recalibration instead of a fixed threshold.** Module 6 showed the conformal guarantee holds under exchangeability; Module 7 showed refreshing a window costs one linear pass. Combining them — recalibrating the conformal set against recent traffic — is the missing piece, and it's a short step from what exists.
+- **The p-value histogram as a production monitor.** It's the cheapest thing in the repository: it needs no labels, and fraud labels arrive weeks late or never. Detecting that the distribution moved shouldn't wait for a case to be confirmed.
+- **Network features, not just transaction features.** PaySim gives a transfer graph that no module uses as such. The AML signals that matter most — cycles, fan-out, bridge accounts — are structural, and none of the sixteen detectors can see them one row at a time.
+- **An explicit labeling budget from day one.** Module 7 shows that 50 well-spent labels already pay off. That makes it reasonable to plan review capacity as part of the system design rather than as a constraint discovered afterwards.
 
 ## Tech Stack
 

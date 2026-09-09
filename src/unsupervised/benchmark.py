@@ -35,6 +35,7 @@ from scipy.stats import spearmanr
 from sklearn.metrics import precision_recall_curve, roc_auc_score
 from sklearn.preprocessing import RobustScaler
 
+from src.adaptive.hs_trees import HalfSpaceTrees
 from src.deep.one_class import build_deep_detectors
 from src.unsupervised.autoencoder import reconstruction_error, train_autoencoder
 from src.unsupervised.ensemble import build_ensembles
@@ -61,6 +62,7 @@ MODEL_FAMILY = {
     "ecod": "Estadístico por feature",
     "loda": "Proyecciones aleatorias",
     "abod": "Geometría angular",
+    "hs_trees": "Streaming adaptativo",
     "robust_mahalanobis": "Covarianza robusta",
     "gmm_density": "Densidad paramétrica",
     "ocsvm_nystroem": "Frontera con kernel",
@@ -83,6 +85,7 @@ FAMILY_COLORS = {
     "Frontera con kernel": "#f9a825",
     "Proyecciones aleatorias": "#5d4037",
     "Geometría angular": "#ad1457",
+    "Streaming adaptativo": "#455a64",
     "Reconstrucción": "#4caf50",
     "Densidad profunda": "#7e57c2",
     "Una clase profunda": "#0097a7",
@@ -103,6 +106,7 @@ MODEL_LABELS = {
     "ecod": "ECOD",
     "loda": "LODA",
     "abod": "FastABOD",
+    "hs_trees": "Half-Space Trees",
     "vae": "VAE (ELBO)",
     "deep_svdd": "Deep SVDD",
     "ensemble_rank_avg": "Ensemble — promedio de rangos",
@@ -119,6 +123,7 @@ def run_detectors(X_train: np.ndarray, X_test: np.ndarray) -> dict[str, dict]:
         "mad_baseline": build_mad_baseline(),
         **build_detectors(),
         **build_deep_detectors(),
+        "hs_trees": HalfSpaceTrees(),
     }
 
     outputs: dict[str, dict] = {}

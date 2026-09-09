@@ -53,6 +53,11 @@ CALIB_NORMAL_SIZE = 30_000
 
 TEST_SIZE = 300_000
 
+# Muestra etiquetada del período temprano para el Módulo 7. Es disjunta de las normales de
+# ajuste y de calibración: si compartiera filas, un modelo supervisado entrenado sobre ella
+# se evaluaría en parte sobre datos que los detectores ya vieron.
+EARLY_LABELED_SIZE = 200_000
+
 
 def temporal_cutoff(steps: pd.Series, train_fraction: float = TRAIN_TIME_FRACTION) -> int:
     """Step que separa el período de entrenamiento del de prueba."""
@@ -63,6 +68,7 @@ def get_temporal_data(
     train_normal_size: int = TRAIN_NORMAL_SIZE,
     calib_normal_size: int = CALIB_NORMAL_SIZE,
     test_size: int = TEST_SIZE,
+    early_labeled_size: int = EARLY_LABELED_SIZE,
     train_fraction: float = TRAIN_TIME_FRACTION,
     random_state: int = 42,
 ) -> dict:
@@ -72,6 +78,8 @@ def get_temporal_data(
     - `X_train`: transacciones normales del período temprano (el ajuste nunca ve fraude);
     - `X_calib`: normales del mismo período temprano, **disjuntas** de `X_train`, para
       calibrar el umbral sobre datos que el detector no usó para ajustarse;
+    - `X_early`, `y_early`: muestra **etiquetada** del período temprano, disjunta de las dos
+      anteriores, con la prevalencia real de ese período (~0,08%);
     - `X_test`, `y_test`: muestra del período tardío **sin enriquecer**;
     - `amounts_test`, `steps_test`: monto y hora sin escalar, para costo y análisis temporal;
     - `cutoff_step`: el step del corte.
@@ -95,9 +103,18 @@ def get_temporal_data(
     # Muestreo simple del período tardío: preserva la proporción de fraude tal como ocurre.
     test = late.sample(n=min(test_size, len(late)), random_state=random_state)
 
+    # Muestra etiquetada del período temprano, excluyendo lo que ya se usó para ajustar y
+    # calibrar los detectores.
+    remaining_early = early.drop(reserved.index)
+    early_labeled = remaining_early.sample(
+        n=min(early_labeled_size, len(remaining_early)), random_state=random_state
+    )
+
     return {
         "X_train": train.drop(columns=[TARGET_COLUMN]),
         "X_calib": calib.drop(columns=[TARGET_COLUMN]),
+        "X_early": early_labeled.drop(columns=[TARGET_COLUMN]),
+        "y_early": early_labeled[TARGET_COLUMN],
         "X_test": test.drop(columns=[TARGET_COLUMN]),
         "y_test": test[TARGET_COLUMN],
         "amounts_test": test["amount"],
