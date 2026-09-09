@@ -5,12 +5,27 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-185%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 Sistema de detección de fraude y anomalías en transacciones bancarias móviles, construido sobre el dataset sintético **PaySim** ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) en Kaggle), que simula transacciones financieras a partir de un mes de datos de un servicio real de dinero móvil en África.
+
+## Cómo leer este repositorio
+
+Son siete módulos y unas 800 líneas de documentación. Según para qué vengas:
+
+| Si querés… | Leé |
+|---|---|
+| **Entender qué se hizo, en 3 minutos** | El [resumen de hallazgos](#resumen-qué-se-aprendió) y el [mapa de módulos](#mapa-de-módulos) |
+| **Evaluar el criterio técnico** | [Errores de método encontrados y corregidos](#errores-de-método-encontrados-y-corregidos) — es la sección que más dice sobre cómo se trabajó |
+| **Ver los modelos y sus resultados** | El [benchmark del Módulo 3](#módulo-3-benchmark-de-familias-de-detección-no-supervisado) y la [tabla de los 16 detectores](#los-16-detectores-de-un-vistazo) |
+| **Ver si esto se puede desplegar** | El [Módulo 5](#módulo-5-del-ranking-a-la-operación--umbral-dinero-y-envejecimiento), que es donde el ranking se convierte en decisiones |
+| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 193 pruebas |
+| **Correrlo** | [Instalación](#instalación) y [Uso](#uso) |
+
+Cada módulo responde una pregunta que el anterior dejó abierta. No están ordenados por complejidad del modelo sino por esa cadena: se empieza clasificando fraude conocido y se termina preguntando en qué gastar la capacidad de revisión de un equipo.
 
 ## Resumen: qué se aprendió
 
@@ -35,7 +50,7 @@ Ocho errores de método aparecieron en el camino y quedaron documentados con su 
 
 | Módulo | Pregunta que responde | Punto de entrada | Notebook |
 |---|---|---|---|
-| **1 — Supervisado** | ¿Se puede clasificar fraude ya etiquetado? | `src/models/train.py` | — |
+| **[1 — Supervisado](#módulo-1-el-techo-supervisado--qué-se-consigue-teniendo-todas-las-etiquetas)** | ¿Cuánto valen las etiquetas? Establece el techo contra el que se leen los demás | `src/models/train.py` | [01](notebooks/01_eda_paysim.ipynb) |
 | **2 — No supervisado** | ¿Y si el fraude es nuevo y no hay etiquetas? | `src/unsupervised/train_unsupervised.py` | [02](notebooks/02_unsupervised_anomaly_detection.ipynb) |
 | **3 — Benchmark** | ¿Qué familias de detección son complementarias y cuánto cuesta cada una? | `src/unsupervised/benchmark.py` | [03](notebooks/03_benchmark_familias_anomalias.ipynb) |
 | **4 — Profundo y secuencial** | ¿El margen está en la profundidad o en el objetivo? ¿Y si se mira la historia de la cuenta? | `src/deep/train_deep.py` | [04](notebooks/04_modelos_profundos_y_secuencias.ipynb) |
@@ -45,16 +60,30 @@ Ocho errores de método aparecieron en el camino y quedaron documentados con su 
 
 ## Nota honesta sobre validación
 
-Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3 `python -m src.deep.train_deep` para el Módulo 4 `python -m src.operations.run_operations` para el Módulo 5 `python -m src.conformal.run_conformal` para el Módulo 6 y `python -m src.adaptive.run_adaptive` para el Módulo 7, más **185/185 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 y `python -m src.adaptive.run_adaptive` para el Módulo 7, más **193/193 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
 
 Dos advertencias necesarias para leer bien las métricas:
 
 - **El conjunto de prueba está enriquecido a propósito.** Contiene 50.000 transacciones normales más *todas* las 8.213 fraudulentas disponibles, o sea un 14,1% de fraude frente al ~0,13% real de PaySim. Es la única forma de tener suficientes anomalías para medir Precision@k con estabilidad, pero implica que estos PR-AUC **no son trasladables** a la prevalencia de producción: en el mundo real la precisión sería sustancialmente menor con el mismo modelo. El Módulo 5 mide exactamente eso: split temporal y prevalencia real del 0,23%.
-- **El Módulo 1 (supervisado) no se re-ejecutó en esta sesión.** Sus métricas no se reportan como números aquí; quien clone el repo puede generarlas con `python -m src.models.train`.
+- **El Módulo 1 usa un split aleatorio**, igual que los Módulos 2 a 4. Sus métricas son optimistas respecto de predecir hacia adelante en el tiempo, que es lo que corrige el Módulo 5.
 
 ## Objetivo
 
-Identificar transacciones fraudulentas dentro de un dataset altamente desbalanceado (la clase `isFraud` representa una fracción mínima del total de transacciones), evaluando distintos enfoques de modelado supervisado y técnicas de balanceo de clases para maximizar la detección de fraude minimizando falsos positivos.
+Construir y comparar sistemas de detección de fraude sobre transacciones bancarias móviles, y llegar hasta el punto en que uno de ellos podría desplegarse.
+
+La pregunta de partida es la obvia: identificar transacciones fraudulentas en un dataset donde la clase `isFraud` representa el 0,13% del total. Pero un clasificador entrenado con fraude etiquetado responde solo una parte, y arrastra una limitación que no se arregla con más datos: **solo reconoce patrones parecidos a fraude que ya ocurrió**. Un esquema nuevo no se parece a nada del entrenamiento.
+
+De ahí salen las preguntas que estructuran los siete módulos, cada una abierta por el módulo anterior:
+
+1. ¿Cuánto vale tener todas las etiquetas? *(el techo supervisado)*
+2. ¿Se puede detectar fraude sin ninguna? *(detección no supervisada)*
+3. ¿Qué familias de detección son complementarias, y cuánto cuesta cada una? *(benchmark)*
+4. ¿El margen del deep learning está en la profundidad o en el objetivo? *(modelos profundos)*
+5. ¿Dónde se corta el score, cuánta plata salva, y sigue funcionando el mes que viene? *(operación)*
+6. ¿Se puede *garantizar* la tasa de falsas alarmas en vez de estimarla? *(garantías de cobertura)*
+7. ¿Cómo se adapta un detector solo, y qué hago cuando aparecen unas pocas etiquetas? *(deriva y etiquetas)*
+
+El objetivo secundario, y el que explica el tamaño de este documento, es **dejar el razonamiento a la vista**: por qué se eligió cada método, qué se midió para decidirlo, y qué resultados no salieron como se esperaba. Varios de los hallazgos del repositorio son negativos o contraintuitivos, y están reportados como tales.
 
 ## Arquitectura del proyecto
 
@@ -171,6 +200,25 @@ A eso se le agregan cuatro features construidas en `build_features.py`. Dos de e
 - `errorBalanceDest` = `oldbalanceDest + amount - newbalanceDest` — lo mismo del lado del destino;
 - `origBalanceZero` / `destBalanceZero` — indicadores de saldo en cero antes de la operación.
 
+### Lo que hay que ver antes de modelar
+
+Cuatro propiedades de PaySim condicionan decisiones de todos los módulos siguientes. Se calculan en `src/data/overview.py`:
+
+```bash
+python -m src.data.overview
+```
+
+![Panorama del dataset](data/processed/figures/dataset_overview.png)
+
+**Cómo leer la figura.** Arriba a la izquierda, el desbalance en escala logarítmica — sin la escala log la barra de fraude sería invisible, que es precisamente el punto. Arriba a la derecha, la tasa de fraude por tipo de transacción. Abajo a la izquierda, la distribución de montos por clase, también en log. Abajo a la derecha, dos series superpuestas: el volumen diario (área azul, eje izquierdo) y el conteo de fraudes diario (línea naranja, eje derecho).
+
+**Qué implica cada panel:**
+
+- **El fraude es el 0,13% del dataset.** Un clasificador que responda "legítima" a todo acierta el 99,87% de las veces. Por eso la accuracy no aparece en ningún módulo y por eso PR-AUC domina sobre ROC-AUC en las tablas.
+- **El fraude solo existe en `TRANSFER` (0,77%, 4.097 casos) y `CASH_OUT` (0,18%, 4.116).** En `PAYMENT`, `DEBIT` y `CASH_IN` no hay un solo caso entre 3,6 millones de transacciones. Es una regla determinista que un árbol aprende en su primer corte, y es la razón por la que los modelos supervisados del Módulo 1 alcanzan métricas altísimas: buena parte del trabajo la hace un filtro categórico, no un modelo.
+- **El fraude mueve mucha más plata.** Mediana de 441.423 contra 74.685, casi 6x. Los 8.213 fraudes suman 12.056 millones — el 1,1% del monto total movido por el 0,13% de las transacciones. De ahí sale toda la instrumentación en pesos del Módulo 5: contar transacciones y contar dinero no ordenan igual.
+- **El volumen se desploma después del día 16** —de ~400.000 transacciones diarias a menos de 50.000, con el día 30 en apenas 272 contra las 574.255 del día 0, una razón de 2.111x— mientras el conteo diario de fraude se mantiene estable en una mediana de 262. La tasa de fraude se dispara por el denominador, no por el numerador. Un split aleatorio promedia sobre todo el mes y esconde el fenómeno; el split temporal del Módulo 5 lo expone, y el filtro de volumen mínimo del análisis de deriva existe exactamente por esto.
+
 ## Instalación
 
 ```bash
@@ -249,6 +297,54 @@ python -m src.adaptive.run_adaptive
 
 Compara Half-Space Trees con ventana fija contra ventana refrescada cada día, mide cuánto aportan los scores de los 16 detectores como features de un clasificador según el presupuesto de etiquetado, y simula el circuito de revisión con cinco estrategias de selección.
 
+
+## Módulo 1: El techo supervisado — qué se consigue teniendo todas las etiquetas
+
+Antes de renunciar a las etiquetas conviene medir cuánto valen. Este módulo entrena tres clasificadores sobre el dataset completo, con las 6,3 millones de etiquetas disponibles, y establece el techo contra el cual se leen los seis módulos siguientes.
+
+```bash
+python -m src.models.train
+```
+
+Split aleatorio 80/20 estratificado, prevalencia natural del 0,13%, y manejo explícito del desbalance en los tres modelos (`class_weight="balanced"` en los dos primeros, `scale_pos_weight` en XGBoost).
+
+### Resultados
+
+| Modelo | ROC-AUC | PR-AUC | Precisión (fraude) | Recall (fraude) | Accuracy |
+|---|---|---|---|---|---|
+| **Random Forest** | 0.9998 | **0.9987** | **0.9994** | 0.9976 | 1.0000 |
+| XGBoost | 0.9997 | 0.9926 | 0.8505 | **0.9970** | 0.9998 |
+| Regresión Logística | 0.9900 | 0.5959 | 0.0270 | 0.9446 | 0.9561 |
+
+*(Conjunto de prueba: 1.272.524 transacciones, 1.643 fraudes.)*
+
+![Curvas Precision-Recall supervisadas](data/processed/figures/pr_curves.png)
+
+**Cómo leer la figura.** Tres curvas Precision-Recall sobre el mismo conjunto de prueba. La línea punteada del azar está en 0,0013 — casi pegada al eje x, porque la prevalencia es del 0,13%. Random Forest y XGBoost corren pegadas al techo de la figura hasta recall 0,99; la Regresión Logística se desploma apenas se aleja del origen.
+
+![Curvas ROC supervisadas](data/processed/figures/roc_curves.png)
+
+**Cómo leer la figura, y por qué engaña.** Las tres curvas ROC parecen casi idénticas y todas excelentes: 0,99 o más. Comparada con la figura anterior, esta es la demostración visual de por qué el ROC-AUC no sirve como métrica principal bajo desbalance extremo — la Regresión Logística tiene ROC-AUC 0,9900 y PR-AUC 0,5959. **La misma pareja de números, en la misma fila, difiere en 0,4.** El eje x del ROC es la tasa de falsos positivos, y con 1,27 millones de negativos, marcar 57.000 de más apenas la mueve.
+
+![Matrices de confusión](data/processed/figures/confusion_matrices.png)
+
+**Cómo leer la figura.** Una matriz por modelo, con el conteo absoluto en cada celda. La celda que importa es la superior derecha: falsos positivos, o sea transacciones legítimas marcadas como fraude. Random Forest tiene 1; la Regresión Logística tiene ~55.800.
+
+### Qué dicen estos números
+
+- **El techo supervisado es 0,9987 de PR-AUC.** Prácticamente perfecto, y conviene entender por qué antes de celebrarlo: el fraude de PaySim se inyecta con una regla determinista —siempre `TRANSFER` o `CASH_OUT`, siempre vaciando el saldo de origen— y un árbol aprende esa regla en sus primeros cortes. **El modelo no está descubriendo fraude, está reconstruyendo el generador del simulador.** Sobre fraude real, con adversarios que cambian de táctica, ningún supervisado alcanza estas cifras.
+- **Ese techo es la referencia contra la que se leen todos los demás módulos.** El mejor detector no supervisado del repositorio llega a 0,807 sobre un conjunto enriquecido. La distancia entre 0,999 y 0,807 es, exactamente, lo que cuesta no tener etiquetas. Y el Módulo 7 muestra que 5.000 etiquetas bien gastadas recuperan buena parte de esa distancia (0,935).
+- **La Regresión Logística ilustra un error clásico de reporte.** Su accuracy es 0,9561, y suena razonable hasta que uno calcula la del modelo trivial que responde "legítima" a todo: **0,9987**. El modelo lineal es *peor que no modelar nada* según esa métrica, y sin embargo detecta el 94% del fraude. Ninguna de las dos lecturas sirve sola; por eso ninguna tabla de este repositorio reporta accuracy.
+- **Precisión 0,027 significa 36 falsas alarmas por cada fraude atrapado.** Con la capacidad de revisión de 100 alertas diarias del Módulo 5, ese modelo consumiría el equipo entero para encontrar tres casos.
+
+### La limitación que motiva todo lo que sigue
+
+Este módulo comparte la debilidad metodológica que el Módulo 5 corrige: **el split es aleatorio sobre datos con orden cronológico**, así que las métricas son optimistas respecto de lo que daría predecir hacia adelante.
+
+Pero hay una limitación más profunda, y es conceptual. Un modelo supervisado solo reconoce patrones parecidos a fraude que **ya ocurrió y alguien etiquetó**. Un esquema genuinamente nuevo —lo que en seguridad se llama *zero-day*— no se parece a nada del entrenamiento, y el clasificador no tiene ninguna razón para marcarlo. Eso no se arregla con más datos ni con un modelo mejor: es una limitación de la formulación del problema.
+
+De ahí en adelante el repositorio abandona las etiquetas.
+
 ## Módulo 2: Detección de fraude desconocido / zero-day (no supervisado)
 
 El Módulo 1 entrena con fraude ya etiquetado, así que solo puede reconocer patrones parecidos a fraude que ya ocurrió antes. El Módulo 2 cubre el caso complementario: un esquema de fraude genuinamente nuevo ("zero-day") no se parece a nada visto en el entrenamiento, y un modelo supervisado no tiene por qué detectarlo. El enfoque aquí es aprender únicamente la forma de lo normal y señalar como anómalo cualquier caso que se aleje de ese patrón, sin usar una sola etiqueta de fraude durante el ajuste.
@@ -294,8 +390,23 @@ Local Outlier Factor domina claramente con este conjunto de features. Las tres a
 PR-AUC, Precision@k y Recall@k de cada modelo/corrida se persisten en `data/processed/metrics.duckdb` (consultable con `duckdb.connect(...)` o `src.unsupervised.metrics_store.load_latest_metrics()`).
 
 ![Distribución de anomaly scores](data/processed/figures/unsupervised_scores.png)
+
+**Cómo leer la figura.** Un panel por detector, con la distribución del anomaly score de las transacciones legítimas (azul) contra las fraudulentas (naranja). El eje x va en escala logarítmica y recortado a los percentiles 0,5 y 99,5 — sin ese recorte, una sola cola extrema comprimiría toda la zona donde las dos distribuciones efectivamente se separan.
+
+Lo que hay que buscar es **solapamiento**: cuanto menos se pisen las dos distribuciones, mejor separa el detector. En el panel del baseline MAD-z pasa algo llamativo: la distribución naranja está *a la izquierda* de la azul, o sea que el fraude obtiene scores **más bajos** que lo legítimo. Ese detector no está fallando, está ordenando al revés, y es lo que produce su ROC-AUC de 0.383.
+
 ![Curva Precision-Recall](data/processed/figures/unsupervised_pr_curve.png)
+
+**Cómo leer la figura.** Cada curva recorre todos los umbrales posibles de un detector: al moverse hacia la derecha se marcan más transacciones, así que el recall sube y la precisión cae. La línea punteada horizontal es el azar — con un conjunto enriquecido al 14,1%, marcar transacciones sin criterio acierta el 14,1% de las veces.
+
+Una curva que se mantiene alta hacia la derecha es un detector que aguanta recall sin ahogarse en falsos positivos. Interesa sobre todo el extremo izquierdo, porque ahí es donde opera un equipo real: en las primeras decenas de alertas.
+
 ![Comparación de activaciones del autoencoder](data/processed/figures/autoencoder_activations.png)
+
+**Cómo leer la figura.** Tres barras, una por función de activación, sobre exactamente la misma arquitectura, los mismos datos y la misma semilla. Lo único que cambia es la no linealidad.
+
+Las tres quedan a menos de 0,01 de PR-AUC entre sí. La conclusión no es cuál gana —la diferencia está dentro del ruido de una sola corrida— sino que **sobre datos tabulares de 15 columnas la elección de activación es marginal** comparada con la elección de familia de detector, que mueve el PR-AUC entre 0,14 y 0,81.
+
 
 ## Módulo 3: Benchmark de familias de detección (no supervisado)
 
@@ -345,6 +456,11 @@ Los tres **ensembles** resuelven el problema de que los scores viven en escalas 
 
 ![Ranking por familia](data/processed/figures/benchmark_ranking.png)
 
+**Cómo leer la figura.** Barras horizontales ordenadas por PR-AUC, coloreadas por familia de detector. Los colores importan más que el orden: si dos barras del mismo color quedaran juntas, sería señal de que esa familia domina por alguna propiedad estructural. No pasa — las familias están repartidas por todo el ranking, y detectores de la misma familia (los dos de reconstrucción, los tres estadísticos por feature) quedan lejos entre sí.
+
+Eso ya sugiere que el desempeño depende más de la interacción entre el método y este dataset en particular que de la familia a la que pertenece.
+
+
 **Lo que dicen los números:**
 
 - **Gaussian Mixture (0.807) y LOF (0.802) empatan arriba, pero por razones distintas.** Su correlación de Spearman es apenas 0.41, y sus curvas PR se cruzan: LOF domina entre recall 0.4 y 0.8, GMM lo supera por encima de 0.85. Cuál conviene depende de la capacidad de revisión del equipo, no del PR-AUC agregado.
@@ -356,11 +472,21 @@ Los tres **ensembles** resuelven el problema de que los scores viven en escalas 
 
 ![Correlación entre detectores](data/processed/figures/benchmark_correlation.png)
 
+**Cómo leer la figura.** Correlación de Spearman entre los *rankings* de anomalía, no entre los scores crudos. Se usa Spearman justamente porque los scores viven en escalas incomparables: una distancia de Mahalanobis y una log-verosimilitud no se pueden correlacionar linealmente con sentido, pero el orden que producen sí.
+
+Rojo intenso significa que dos detectores ordenan las transacciones casi igual, o sea que son redundantes entre sí. Verde significa que ordenan al revés. La diagonal es 1 por construcción y no dice nada.
+
+La pregunta que responde es económica: **si dos detectores dan el mismo orden, desplegar los dos duplica el costo de scoring sin agregar cobertura.**
+
+
 Correlación de Spearman entre los *rankings* de anomalía. Entre los trece detectores de los Módulos 2 a 5, **ningún par supera 0.9**: cada familia ordena las transacciones de forma distinta y ninguna es descartable por redundancia pura. Los pares más parecidos son Mahalanobis ↔ kNN (0.88) y Mahalanobis ↔ Autoencoder (0.87); los más complementarios, MAD-z ↔ LOF (−0.04) y MAD-z ↔ GMM (−0.42).
 
 Eso cambia con los dos detectores que agrega el Módulo 6: FastABOD replica a kNN con ρ = 0.99. El detalle está en [Agregar detectores no es lo mismo que agregar cobertura](#agregar-detectores-no-es-lo-mismo-que-agregar-cobertura).
 
 ![Curvas Precision-Recall](data/processed/figures/benchmark_pr_curve.png)
+
+**Cómo leer la figura.** Solo los seis mejores por PR-AUC, porque dieciséis curvas superpuestas no se leen. Lo interesante es que **se cruzan**: ningún detector domina en todo el rango de recall. Gaussian Mixture manda en el extremo derecho y Local Outlier Factor entre recall 0,4 y 0,8, así que cuál conviene depende de dónde opere el equipo — no hay una respuesta única que el PR-AUC agregado pueda dar.
+
 
 ### Costo computacional
 
@@ -388,6 +514,9 @@ Deep SVDD tiene un modo de falla silencioso: si la red aprende a mapear *toda* e
 
 ![Curvas PR de los modelos profundos](data/processed/figures/deep_pr_curve.png)
 
+**Cómo leer la figura.** Las mismas curvas Precision-Recall del Módulo 2, restringidas a los tres modelos profundos y con el autoencoder incluido como referencia. Los tres se entrenaron en la **misma corrida**, sobre el mismo split y con el mismo escalado: sin eso, comparar contra un número medido en otra ejecución mezclaría la diferencia entre modelos con la varianza entre corridas.
+
+
 ### Estabilidad numérica: el VAE falló con NaN antes de funcionar
 
 Vale documentarlo porque es el tipo de problema que solo aparece con datos reales. Tras el `RobustScaler`, las colas de `errorBalanceDest` llegan a ~1900 y la suma de cuadrados por fila alcanza 3.7e6. Con el término de reconstrucción **sumado** sobre las 15 columnas, la pérdida arranca en millones, los gradientes explotan y los pesos se vuelven `NaN` en la primera época. La primera corrida sobre PaySim murió exactamente así, después de haber pasado sin problemas con datos sintéticos.
@@ -406,6 +535,11 @@ La señal que solo existe en la secuencia es `delta_step`: las horas entre trans
 **Resultado: PR-AUC 0.099 contra un azar de 0.087.** En la práctica, no detecta nada.
 
 ![Detector secuencial](data/processed/figures/sequence_detector.png)
+
+**Cómo leer la figura.** A la izquierda, la distribución del error de reconstrucción de las cuentas limpias (azul) contra las que recibieron fraude (naranja). A la derecha, la curva Precision-Recall correspondiente, con la línea punteada del azar.
+
+Este es el aspecto de un resultado nulo, y conviene saber reconocerlo: las dos distribuciones se superponen casi perfectamente y la curva PR corre pegada a la línea del azar de punta a punta. No hay ningún umbral que separe algo. Compararlo con la figura de distribuciones del Módulo 2 hace evidente la diferencia entre un detector que funciona y uno que no.
+
 
 ### Por qué ese resultado negativo es del dataset y no del método
 
@@ -460,6 +594,13 @@ El corte cae en `step=323`: 30.000 normales tempranas para ajustar, 30.000 más 
 
 ![Ahorro neto y recall en pesos](data/processed/figures/operations_savings.png)
 
+**Cómo leer la figura.** El eje x —cuántas alertas se revisan— va en escala logarítmica en los dos paneles, porque las decisiones interesantes ocurren entre 10 y 10.000 y una escala lineal aplastaría todo ese rango contra el origen.
+
+A la izquierda, el ahorro neto: el dinero recuperado menos el costo de revisar todas las alertas. Sube mientras las alertas siguen conteniendo fraude y baja cuando se empieza a revisar ruido; el punto marcado es el máximo, o sea el presupuesto de revisión óptimo. La caída final por debajo de cero es revisar todo el tráfico a pérdida.
+
+A la derecha, la fracción del **monto** defraudado recuperado. Que las curvas de los dos paneles no tengan la misma forma es justamente el punto: maximizar dinero salvado y maximizar dinero recuperado no dan el mismo punto de operación, porque el segundo ignora el costo.
+
+
 **Lo que dicen los números:**
 
 - **El que mejor rankea no es el que más plata salva.** Deep SVDD lidera el PR-AUC (0.368) pero Gaussian Mixture recupera más dinero (944 M contra 833 M) y atrapa el 93% del monto defraudado contra el 81%. Con el 10% de los fraudes concentrando el 50,2% del monto, ordenar bien por conteo y ordenar bien por pesos son dos cosas distintas. El matiz está en la figura: con presupuestos muy chicos (menos de ~300 alertas) Deep SVDD recupera más dinero, y GMM lo pasa recién a partir de ahí — la respuesta depende de cuánto alcanza a revisar el equipo.
@@ -478,6 +619,13 @@ Lo comparable es el ROC-AUC, que no depende de la prevalencia. Ahí el panorama 
 
 ![Calibración del umbral](data/processed/figures/operations_calibration.png)
 
+**Cómo leer la figura.** Los dos ejes en escala logarítmica, y la diagonal punteada es la calibración perfecta: prometer 1% de falsas alarmas y entregar 1%. Un detector **por encima** de la diagonal dispara más alertas de las prometidas; por debajo, menos.
+
+Las líneas llenas usan un umbral calibrado sobre normales retenidas; las punteadas, sobre el propio conjunto de entrenamiento. Que ambas se superpongan en todos los detectores es el resultado, no un descuido de la figura: descarta el sobreajuste como explicación.
+
+La distancia vertical a la diagonal es directamente el factor de error. Deep SVDD está tres órdenes de magnitud arriba en el extremo izquierdo — promete una alerta cada mil transacciones legítimas y entrega una cada tres.
+
+
 GMM, Mahalanobis y kNN caen sobre la diagonal: prometen 1% y entregan entre 1,1% y 1,4%. **Deep SVDD promete 0,1% y entrega 35%** — tres órdenes de magnitud. El mejor detector por PR-AUC es, tal cual está, indesplegable.
 
 La hipótesis natural es el sobreajuste: Deep SVDD *minimiza explícitamente* la distancia al centro sobre los puntos de entrenamiento, así que sus scores ahí serían optimistas por construcción. Si fuera eso, calibrar sobre las normales retenidas lo arreglaría.
@@ -495,6 +643,13 @@ La primera corrida usaba un costo de 1.000, por debajo del equilibrio, y el ópt
 ### ¿El detector envejece?
 
 ![Degradación temporal](data/processed/figures/operations_drift.png)
+
+**Cómo leer la figura.** Las líneas son el ROC-AUC de cada día del período de prueba (eje izquierdo); las barras grises de fondo son el volumen de transacciones de ese día (eje derecho). Las barras están ahí para poder juzgar cuánta confianza merece cada punto: un día con pocas transacciones da una métrica ruidosa aunque esté dibujada igual que los demás.
+
+Se usa ROC-AUC y no PR-AUC porque la prevalencia diaria cambia, y el PR-AUC la sigue. Una curva de PR-AUC diario mediría el cambio de prevalencia y no la degradación del detector — que es exactamente el error que produjo la primera versión de este análisis.
+
+Lo que hay que buscar es **tendencia**, no oscilación. Las cuatro líneas suben y bajan de un día al otro, pero ninguna baja de forma sostenida.
+
 
 **No, al menos no en 17 días.** El ROC-AUC diario es plano para los cuatro detectores y el orden entre ellos se mantiene.
 
@@ -582,7 +737,21 @@ El aporte de la detección conforme no es entonces eliminar el supuesto, es **vo
 
 ![Cobertura conforme](data/processed/figures/conformal_coverage.png)
 
+**Cómo leer la figura.** Dos paneles con el mismo eje y, y la diagonal punteada como garantía. A la izquierda, calibración y evaluación del mismo período: es el escenario donde la intercambiabilidad se cumple por construcción. A la derecha, la evaluación se mueve al período posterior.
+
+En el panel izquierdo las cuatro líneas caen sobre la diagonal, incluida la de Deep SVDD. Eso demuestra que **el método de calibración no era el problema**. En el panel derecho, tres detectores siguen cerca de la diagonal y Deep SVDD se despega hacia arriba, plano y lejos.
+
+Los dos paneles comparten detector, ajuste y calibración. La única variable que cambia entre uno y otro es de dónde salen las transacciones evaluadas.
+
+
 ![Distribución de p-valores](data/processed/figures/conformal_pvalues.png)
+
+**Cómo leer la figura.** Histogramas de los p-valores conformes de las transacciones **legítimas**, con la línea punteada en densidad 1, que es la uniforme. Bajo intercambiabilidad esos p-valores deberían distribuirse uniformemente en [0,1]: ese es el contenido estadístico de la garantía.
+
+Un histograma plano significa calibración perfecta. Cualquier apartamiento mide deriva — y lo hace **sin necesidad de una sola etiqueta**, que es lo que lo vuelve un monitor de producción viable.
+
+Para el umbral importa la masa acumulada **cerca de cero**, no la forma global: es esa cola izquierda la que determina la tasa de falsas alarmas con α chico. Por eso Mahalanobis, cuyo histograma tampoco es uniforme, mantiene una razón cercana a 1 mientras Deep SVDD se dispara.
+
 
 Bajo intercambiabilidad los p-valores de las transacciones legítimas son **uniformes en [0,1]** — ese es el contenido estadístico de la garantía. Cuánto se aparta el histograma de la uniforme mide la deriva **sin necesidad de una sola etiqueta**, que es la propiedad realmente útil en producción: da un monitor de drift gratis.
 
@@ -607,6 +776,11 @@ Los otros dieciséis detectores comparten un supuesto: se ajustan una vez y se u
 La idea es astuta y barata: los árboles se construyen **antes de ver un solo dato**. Cada nodo parte el espacio por la mitad en una dimensión al azar, así que la estructura no depende de la muestra; lo único que se aprende es cuántos puntos caen en cada nodo. Actualizar el modelo es recontar —una pasada lineal— en vez de reajustar, y **no necesita una sola etiqueta**.
 
 ![Streaming adaptativo](data/processed/figures/adaptive_streaming.png)
+
+**Cómo leer la figura.** Dos series de ROC-AUC diario sobre exactamente los mismos días y los mismos datos. Comparten árboles, semilla y ventana inicial; la única diferencia es que la línea naranja refresca su perfil de masa con el tráfico del día anterior.
+
+Las dos arrancan en el mismo punto del día 0 —todavía no hubo nada que refrescar— y se separan a partir de ahí. La brecha promedio es de 0,017, o sea que refrescar ayuda pero poco, y ninguna de las dos se acerca al 0,96 que consigue Gaussian Mixture sobre el mismo split.
+
 
 Sobre el split temporal, refrescando la ventana con el tráfico de cada día: **0.586 de ROC-AUC promedio contra 0.569 con ventana fija**. Ayuda, pero poco. Y en términos absolutos es un detector flojo — Gaussian Mixture llega a 0.96 sobre el mismo split, y en el benchmark batch HS-Trees queda 15.º con PR-AUC 0.458.
 
@@ -646,6 +820,11 @@ Pero antes que el modelo importa cómo se gasta el presupuesto. Etiquetar 50 tra
 
 ![Presupuesto de etiquetado](data/processed/figures/adaptive_label_budget.png)
 
+**Cómo leer la figura.** Dos paneles con el mismo eje y, y el eje x —cantidad de transacciones etiquetadas— en escala logarítmica. A la izquierda se etiqueta la cola de alertas; a la derecha, al azar. En cada panel, una línea usa solo las features originales y la otra les agrega los scores de los 16 detectores.
+
+El panel derecho está casi vacío, y esa ausencia es el resultado: con prevalencia del 0,08%, muestrear al azar no encuentra un solo positivo hasta las 500 etiquetas, y sin positivos no hay clasificador que entrenar.
+
+
 Con **50 transacciones revisadas** el modelo apilado ya casi iguala al detector no supervisado que ordenó esa misma cola. Con 5.000 llega a 0.935, más de **tres veces** la referencia. Los quince detectores de los módulos anteriores valen como features aunque ninguno se despliegue solo.
 
 Etiquetando al azar, en cambio, **no aparece un solo fraude hasta las 500 etiquetas** y no hay clasificador que entrenar. Una advertencia sobre ese bloque: la fila de 1.000 etiquetas al azar con un único positivo marca 0.89 de PR-AUC, y no es un resultado — con un solo ejemplo positivo la varianza es enorme y ese número es ruido.
@@ -667,6 +846,11 @@ La primera versión de este experimento comparaba tres estrategias: `random`, `t
 | `hybrid` (mitad y mitad) | 0.952 | 96 |
 
 ![Aprendizaje activo](data/processed/figures/adaptive_active_learning.png)
+
+**Cómo leer la figura.** A la izquierda, cuánto aprende cada estrategia (PR-AUC sobre el período tardío). A la derecha, cuánto fraude encuentra en el camino. Los dos paneles hay que leerlos juntos: una estrategia que aprende mucho pero no atrapa nada mientras tanto tiene un costo operativo que el panel izquierdo no muestra.
+
+El resultado esperable sería una tensión entre ambos paneles — explorar arriba a la izquierda y abajo a la derecha. No aparece: `top_model` está entre las mejores en los dos. La línea de `random` está ausente del panel izquierdo porque nunca llegó a entrenar un modelo.
+
 
 Con la variable aislada, la conclusión se da vuelta:
 
@@ -701,6 +885,31 @@ Todos entrenados solo con transacciones normales, todos con la convención `fit`
 
 Además: tres estrategias de **ensemble** (`unsupervised/ensemble.py`), un **autoencoder GRU por cuenta destino** (`deep/sequences.py`, evaluado sobre cuentas y por lo tanto fuera de esta tabla) y un envoltorio **conforme** aplicable a cualquiera de los dieciséis (`conformal/conformal.py`) y un **clasificador apilado** que los usa a todos como features (`adaptive/stacking.py`).
 
+## Cómo decide cada detector
+
+Los dieciséis comparten la misma interfaz y el mismo split, pero la pregunta que le hacen a una transacción es distinta en cada caso. Esta es la intuición de cada uno, en una línea:
+
+| Detector | La pregunta que hace |
+|---|---|
+| **Isolation Forest** | ¿Cuántos cortes al azar hacen falta para dejar este punto solo? Pocos = anómalo |
+| **Local Outlier Factor** | ¿Este punto está en una zona menos densa que sus vecinos más cercanos? |
+| **kNN (k-ésima distancia)** | ¿A qué distancia está su vigésimo vecino? Lejos = anómalo |
+| **FastABOD** | ¿Desde este punto, el resto de la nube se ve en todas las direcciones o hacia un solo lado? |
+| **MAD-z** | ¿Alguna columna, por sí sola, se aparta mucho de su mediana? |
+| **HBOS** | ¿En qué bin del histograma cae cada columna, y qué tan vacío está ese bin? |
+| **ECOD** | ¿Qué tan adentro de la cola de su distribución empírica cae cada columna? |
+| **LODA** | Proyectado sobre cien direcciones aleatorias, ¿cae en zonas de baja densidad? |
+| **Mahalanobis robusto** | ¿Sus valores son plausibles *en conjunto*, dada la covarianza de lo normal? |
+| **Gaussian Mixture** | ¿Qué tan improbable es este punto bajo una mezcla de gaussianas ajustada a lo normal? |
+| **One-Class SVM** | ¿Cae adentro o afuera de la frontera que encierra a lo normal? |
+| **PCA (reconstrucción)** | Proyectado al subespacio principal y devuelto, ¿cuánto cambió? |
+| **Autoencoder** | Lo mismo, pero con una compresión no lineal aprendida |
+| **VAE** | ¿Qué tan improbable es, considerando reconstrucción *y* código latente? |
+| **Deep SVDD** | En el espacio aprendido, ¿qué tan lejos está del centro de la esfera de lo normal? |
+| **Half-Space Trees** | ¿Cuántas transacciones recientes cayeron en la misma región del espacio? |
+
+Puestas así se ve por qué la matriz de correlación del Módulo 3 encuentra pares redundantes: "¿a qué distancia está su vigésimo vecino?" y "¿el resto se ve hacia un solo lado?" son preguntas distintas en el papel, pero sobre quince dimensiones terminan dando la misma respuesta (ρ = 0.99).
+
 ## Convenciones que hacen comparables a dieciséis detectores
 
 Que un Isolation Forest, un autoencoder de PyTorch, una mezcla de gaussianas y un ensemble de árboles de streaming se puedan poner en la misma tabla no es gratis. Son cuatro decisiones sostenidas a lo largo de todos los módulos:
@@ -730,6 +939,7 @@ Todo el pipeline es determinista: semillas fijas en cada `random_state`, `torch.
 
 ```bash
 python -m src.data.loader                    # descarga PaySim (requiere credenciales de Kaggle)
+python -m src.data.overview                  # panorama del dataset y su figura
 python -m src.models.train                   # Módulo 1
 python -m src.unsupervised.train_unsupervised  # Módulo 2
 python -m src.unsupervised.benchmark         # Módulo 3 (+ VAE y Deep SVDD del Módulo 4)
@@ -737,7 +947,7 @@ python -m src.deep.train_deep                # Módulo 4
 python -m src.operations.run_operations      # Módulo 5
 python -m src.conformal.run_conformal        # Módulo 6
 python -m src.adaptive.run_adaptive          # Módulo 7
-pytest tests/                                # 185 pruebas, sin descargar nada
+pytest tests/                                # 193 pruebas, sin descargar nada
 ```
 
 Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), que es lo que domina el tiempo de arranque; el ajuste y el scoring de los detectores están cronometrados por separado en la tabla del Módulo 3. Las pruebas unitarias corren en segundos porque usan datos sintéticos y no tocan el dataset.
@@ -748,7 +958,7 @@ Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), 
 - **Los Módulos 2 a 4 usan un conjunto de prueba enriquecido al 14,1%** para tener suficientes anomalías con las que medir Precision@k con estabilidad. Sus PR-AUC no son trasladables a la prevalencia real. El Módulo 5 corrige eso con prevalencia natural, y por eso sus números son mucho más bajos.
 - **Las features son linealmente dependientes por construcción**: las dummies de `type_*` suman 1 y los `errorBalance*` son combinaciones exactas de montos y saldos. Mahalanobis lo resuelve con pseudo-inversa, pero es la causa de la advertencia de rango incompleto que emite scikit-learn.
 - **El costo de revisión es un supuesto de negocio**, no un dato. Se reporta el costo de equilibrio (3.375 por alerta) para que se pueda juzgar cuánto del resultado depende de esa elección.
-- **El Módulo 1 supervisado no se re-ejecutó** en la sesión que produjo estos números; sus métricas no se reportan.
+- **El techo supervisado del Módulo 1 (PR-AUC 0,9987) mide el simulador, no el fraude.** PaySim inyecta fraude con una regla determinista que un árbol aprende en sus primeros cortes; sobre fraude real, con adversarios que se adaptan, ningún supervisado alcanza esas cifras.
 - **La degradación temporal se midió sobre 17 días.** No dice nada sobre horizontes más largos, y el volumen de PaySim se derrumba justo al final del mes, lo que deja los últimos días sin muestra suficiente para evaluar.
 
 ## Errores de método encontrados y corregidos
@@ -793,6 +1003,23 @@ Las limitaciones de arriba no son excusas: cada una sugiere un cambio concreto, 
 - **duckdb** — persistencia local de métricas comparativas entre corridas
 - **pytest** — pruebas unitarias
 - **kagglehub** — descarga programática del dataset desde Kaggle
+
+## Glosario
+
+Términos que aparecen a lo largo del documento, con el sentido preciso que tienen acá.
+
+| Término | Qué significa en este repositorio |
+|---|---|
+| **Anomaly score** | Número continuo donde más alto = más anómalo. Todos los detectores exponen `score_samples` con la convención inversa de scikit-learn (más bajo = más anómalo) y `anomaly_score()` invierte el signo una sola vez |
+| **Prevalencia** | Fracción de transacciones que son fraude en un conjunto dado. Varía entre módulos —0,13% en el dataset completo, 14,1% en el conjunto enriquecido de los Módulos 2-4, 0,23% en el período tardío del Módulo 5— y esa variación invalida comparar PR-AUC entre ellos |
+| **Conjunto enriquecido** | Conjunto de prueba armado a propósito con todas las anomalías disponibles más una muestra de normales, para tener suficientes positivos con los que medir Precision@k de forma estable. Distorsiona cualquier métrica que dependa de la prevalencia |
+| **Zero-day** | Fraude cuyo patrón no aparece en los datos históricos. Es el caso que un modelo supervisado no puede cubrir por construcción y la razón de ser de los Módulos 2 a 6 |
+| **Deriva (drift)** | Cambio en la distribución de los datos entre el momento del ajuste y el de la predicción. Acá se manifiesta sobre todo como corrimiento de la **escala** del score, no del orden que produce |
+| **Intercambiabilidad** | Supuesto de que la calibración y los datos nuevos vienen de la misma distribución. Es la condición exacta bajo la cual vale la garantía conforme del Módulo 6 |
+| **Costo de equilibrio** | Costo de revisión por encima del cual deja de convenir revisar una transacción al azar: la pérdida esperada por transacción. Por debajo de él, el óptimo económico degenera en "revisar todo" |
+| **Recall en monto** | Fracción del **dinero** defraudado que cae dentro de las alertas, en vez de la fracción de casos. Difiere del recall por conteo cuando los montos son muy dispares |
+| **Arranque en frío** | Situación en la que todavía no hay etiquetas ni modelo supervisado. Los detectores no supervisados son lo único disponible, y ordenan la primera cola de revisión del Módulo 7 |
+| **Perfil de masa** | En Half-Space Trees, la cuenta de cuántos puntos de la ventana caen en cada nodo. Es lo único que el detector aprende de los datos, y refrescarlo es toda la adaptación |
 
 ## Licencia
 
