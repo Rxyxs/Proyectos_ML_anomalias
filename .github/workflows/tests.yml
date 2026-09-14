@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    # Las pruebas corren con datos sintéticos y no descargan PaySim, así que no hacen falta
+    # credenciales de Kaggle ni los 493 MB del dataset. Es lo que las vuelve viables en CI.
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 es la versión con la que se desarrolló; 3.12 verifica que el código siga
+        # funcionando con las versiones nuevas de pandas, numpy y scikit-learn.
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          # La rueda de CPU de PyTorch pesa una fracción de la versión con CUDA, que en un
+          # runner sin GPU sería descarga pura sin ningún uso.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Correr las pruebas
+        run: pytest tests/ -q --durations=10
