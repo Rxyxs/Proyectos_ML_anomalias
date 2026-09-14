@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectors-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-223%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen?logo=pytest&logoColor=white)
 ![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/tests.yml/badge.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
@@ -23,7 +23,7 @@ Seven modules and roughly 800 lines of documentation. Depending on what brings y
 | **Assess technical judgment** | [Methodological errors found and corrected](#methodological-errors-found-and-corrected) — the section that says the most about how the work was done |
 | **See the models and their results** | The [Module 3 benchmark](#module-3-detector-family-benchmark-unsupervised) and the [table of 16 detectors](#the-16-detectors-at-a-glance) |
 | **Judge whether this could ship** | [Module 5](#module-5-from-ranking-to-operation--threshold-money-and-aging), where the ranking turns into decisions, and [Module 8](#module-8-from-model-to-service), which is what actually gets deployed |
-| **Review the code** | `src/unsupervised/families.py` for the classical detectors, `src/deep/` for the deep ones, `tests/` for the 223 tests |
+| **Review the code** | `src/unsupervised/families.py` for the classical detectors, `src/deep/` for the deep ones, `tests/` for the 247 tests |
 | **Run it** | [Installation](#installation) and [Usage](#usage) |
 
 Each module answers a question the previous one left open. They aren't ordered by model complexity but by that chain: it starts by classifying known fraud and ends by asking where a team's review capacity should be spent.
@@ -46,8 +46,9 @@ Six modules, 15 transaction-level detectors, one account-level detector and thre
 | Randomly-structured detectors **get diluted** by irrelevant features. One mechanism explains both LODA's and Half-Space Trees' weak showing. | [Module 7](#why-its-weak-and-why-that-also-explains-loda) |
 | **Production latency is 320x the backtest's.** Measuring batch scoring and assuming it carries over to single transactions understates cost by two orders of magnitude. | [Module 8](#latency-the-number-a-backtest-never-shows) |
 | **Explaining an alert by occluding one column at a time doesn't work** when features are dependent by construction. Two corrections failed before the right one. | [Module 8](#why-this-alert-fired-and-two-failed-attempts) |
+| **Recalibrating the conformal window brings the alert rate back to what was promised** (peak from 11.09% to 2.32%), and an ablation shows the static package's extra recall was bought with its excess alerts. | [Module 9](#module-9-continuous-recalibration) |
 
-Eight methodological errors surfaced along the way and are documented with their fixes in [a section of their own](#methodological-errors-found-and-corrected), together with two of my own hypotheses that the data refuted.
+Eleven methodological errors surfaced along the way and are documented with their fixes in [a section of their own](#methodological-errors-found-and-corrected), together with four of my own hypotheses that the data refuted.
 
 ## Module map
 
@@ -61,10 +62,11 @@ Eight methodological errors surfaced along the way and are documented with their
 | **6 — Guarantees** | Can the false-alarm rate be *guaranteed* rather than estimated? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
 | **7 — Drift and labels** | How does a detector adapt on its own, and what do I do when a few labels appear? | `src/adaptive/run_adaptive.py` | [07](notebooks/07_deriva_y_etiquetas.ipynb) |
 | **8 — Serving** | How do you score a new transaction, how long does it take, and why did the alert fire? | `src/serving/run_serving.py` | [08](notebooks/08_del_modelo_al_servicio.ipynb) |
+| **9 — Recalibration** | If calibration moves with traffic, does the alert rate return to what was promised? At what cost? | `src/serving/run_recalibration.py` | [09](notebooks/09_recalibracion_continua.ipynb) |
 
 ## Honest note on validation
 
-The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, `python -m src.conformal.run_conformal` for Module 6, `python -m src.adaptive.run_adaptive` for Module 7, and `python -m src.serving.run_serving` for Module 8, plus **223/223 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
+The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, `python -m src.conformal.run_conformal` for Module 6, `python -m src.adaptive.run_adaptive` for Module 7, `python -m src.serving.run_serving` for Module 8, and `python -m src.serving.run_recalibration` for Module 9, plus **247/247 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
 
 Two caveats you need in order to read the metrics correctly:
 
@@ -113,6 +115,7 @@ flowchart LR
     C --> O["run_adaptive.py<br/>streaming, stacking and active learning"]
     C --> P["run_serving.py<br/>scoring package + explanation"]
     P --> Q[(detector_package.joblib<br/>detector + scaler + calibration)]
+    Q --> R["run_recalibration.py<br/>conformal window that moves with traffic"]
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -130,7 +133,8 @@ bank-anomaly-detection/
 │   ├── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
 │   ├── 06_metodos_nuevos_y_conformal.ipynb     # Module 6: LODA, FastABOD and conformal detection
 │   ├── 07_deriva_y_etiquetas.ipynb             # Module 7: streaming, stacking, active learning
-│   └── 08_del_modelo_al_servicio.ipynb         # Module 8: scoring package and alerts
+│   ├── 08_del_modelo_al_servicio.ipynb         # Module 8: scoring package and alerts
+│   └── 09_recalibracion_continua.ipynb         # Module 9: conformal window and monitor
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Download (kagglehub) and load the PaySim dataset
@@ -172,13 +176,16 @@ bank-anomaly-detection/
 │   │   ├── package.py           # DetectorPackage: everything that travels together
 │   │   ├── explain.py           # Occlusion by groups of dependent columns
 │   │   ├── predict.py           # Scoring API: score, p-value, alert, reason
-│   │   └── run_serving.py       # Package build, latency and alert load
+│   │   ├── run_serving.py       # Package build, latency and alert load
+│   │   ├── recalibration.py     # Moving conformal window and label-free monitors
+│   │   └── run_recalibration.py # Four calibration strategies, day by day
 │   └── utils/                  # Shared helper functions
 ├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
 │                           # autoencoder, metrics store, families, ensembles,
 │                           # deep models, sequences, thresholds, costs, temporal,
 │                           # conformal detection, streaming, stacking, active,
-│                           # scoring package and alert explanation
+│                           # scoring package and alert explanation,
+│                           # continuous recalibration
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -317,6 +324,14 @@ python -m src.serving.run_serving
 ```
 
 Builds the deployable scoring package — detector, scaler, calibration, threshold, column contract, background and groups — serializes it, verifies that reloading reproduces the same scores, and measures single-transaction latency against the batch-amortized one, the daily alert load, and which column groups the alerts rest on.
+
+Continuous recalibration (Module 9):
+
+```bash
+python -m src.serving.run_recalibration
+```
+
+Simulates four calibration strategies day by day over the later period — static, unlabeled window, window without the alerts, and an oracle window with instant labels — on the same detector and the same scores, and compares the alert rate against the promised one, the fraud captured, and a drift monitor that needs no labels.
 
 
 ## Module 1: The supervised ceiling — what you get with every label
@@ -977,9 +992,99 @@ Two limits of the method remain, worth keeping in mind when reading the `motivo`
 
 ### Continuous integration
 
-The repository never had CI. `.github/workflows/tests.yml` runs all 223 tests on every push across **Python 3.10 and 3.12**, using PyTorch's CPU wheel. The tests use synthetic data and never download PaySim, which is what makes them viable on a runner.
+The repository never had CI. `.github/workflows/tests.yml` runs all 247 tests on every push across **Python 3.10 and 3.12**, using PyTorch's CPU wheel. The tests use synthetic data and never download PaySim, which is what makes them viable on a runner.
 
 The two-version matrix isn't decorative: while this module was being built the environment moved from Python 3.10 with pandas 2.x to Python 3.12 with **pandas 3.0.5, numpy 2.5.2 and scikit-learn 1.9.0**, and 152 of the tests at the time passed without a single code change. That's worth verifying on every commit rather than by accident.
+
+## Module 9: Continuous recalibration
+
+Module 8 left the repository's most serious operational finding: the deployable package promises 1% alerts and delivers 1.57% on day 0 and **11.10% on day 16**. The pieces to fix it were already built but never joined — Module 6 showed the conformal p-value keeps its guarantee while calibration and traffic are exchangeable, and Module 7 that refreshing a window costs one linear pass. This module joins them: the calibration set stops being fixed and moves with recent traffic.
+
+```bash
+python -m src.serving.run_recalibration
+```
+
+### Four strategies, one detector
+
+Same detector, same scaler and same initial calibration as the Module 8 package. Test-period scores are computed once; the only thing that differs between strategies is what happens to the calibration when each day closes.
+
+| Strategy | What joins the window when the day closes | Deployable |
+|---|---|---|
+| `estatico` | Nothing. This is the Module 8 package | Yes |
+| `ventana` | Every score from the day, unlabeled | Yes |
+| `ventana_sin_alertas` | Only what wasn't alerted, to keep fraud out | Yes |
+| `ventana_oraculo` | Only legitimate transactions, with instant labels | **No** — it's an ablation |
+
+The last one can't be deployed: in production fraud labels arrive weeks late. It exists to separate two effects the others mix together, and it ended up refuting the explanation that motivated adding it.
+
+Two design decisions shape everything:
+
+- **The window is measured in transactions (30,000), not days.** PaySim's volume drops 2,111x toward month end; a "last seven days" window would end up with a few hundred scores, and with n calibration points the smallest resolvable p-value is 1/(n+1).
+- **Each day is scored against the current calibration first, and only then added to it.** The other way around, each day would be calibrated on its own scores and the alert rate would come out perfect by construction, measuring nothing. A test pins that day 0 is identical across all four strategies.
+
+### Results
+
+| Strategy | Mean rate | Max rate | Mean FPR | Alerts | Fraud captured | Alerts per fraud |
+|---|---|---|---|---|---|---|
+| static | 2.77% | 11.09% | 2.26% | 4,683 | **55.7%** (381) | 12.3 |
+| **window** | **1.53%** | **2.32%** | **1.10%** | **3,458** | 48.5% (332) | **10.4** |
+| oracle window | 1.73% | 3.05% | 1.29% | 3,651 | 49.9% (341) | 10.7 |
+| window without alerts | 20.35% | 48.22% | 19.72% | 22,062 | 83.6% (572) | 38.6 |
+
+*(Promised: α = 1%. Rates averaged over the 17 days with at least 1,000 transactions; alerts and fraud over all days. 684 frauds in the period.)*
+
+![Continuous recalibration](data/processed/figures/recalibration.png)
+
+**How to read the figure.** On the left, the percentage of transactions alerted each day by the four strategies, with the dashed line at the promised 1%. On the right, for the static package only, two series that measure the same thing with and without labels: the tail ratio — fraction alerted divided by α, computable the same day — and the real FPR divided by α, which requires knowing which transactions were legitimate.
+
+What to look for on the left is **shape**, not any single day: the static line climbs steadily to the day-16 spike, the red one takes off from day 1, and the two recalibrating windows stay pinned to 1-3% throughout the period.
+
+### The window brings the alert rate back to what was promised
+
+Recalibrating with each day's traffic lowers the mean FPR from 2.26% to **1.10%**, the maximum rate from 11.09% to **2.32%**, and the mean deviation from the promised 1% from 1.77 to **0.58 points**. The period produces 1,225 fewer alerts.
+
+The mechanism shows in the threshold: the static package's stays at 14.01 while the score scale shifts; the window's rises to **28.07** by day 16. It isn't the detector that improves — it's the calibration keeping pace with the drift Modules 5 and 6 had diagnosed.
+
+### Excluding alerts from the window: the loop shows up on real data
+
+The tempting way to keep fraud out of the calibration is to not add anything already alerted. The unit tests predicted on synthetic data that this closes a feedback loop, and on PaySim it happens unmistakably:
+
+- the threshold falls from 14.01 to **7.51 in a single day** — day 0 has 61,859 transactions, more than the window holds, so the entire calibration is replaced by that traffic minus its tail — and keeps falling to **0.98**;
+- the alert rate reaches **48.22%** on day 16, with **22,062 alerts** over the period: 4.7 times the static package's.
+
+Its 83.6% fraud capture isn't a merit. Alerting on nearly half the traffic catches fraud by sheer volume: 38.6 alerts per fraud found, almost four times what the window pays.
+
+### The price of keeping the promise, and a hypothesis that didn't survive
+
+The window catches 7.2 points less fraud than the static package (48.5% against 55.7%). The natural explanation was contamination: the window is fed without labels, fraud fattens its tail, the threshold rises too far, and the very thing that should be alerted stops being alerted.
+
+The oracle window exists to measure exactly that: it's identical to the window but adds only legitimate transactions. If contamination explained the loss, the oracle would recover the static package's recall.
+
+**It recovers 1.3 of the 7.2 points** — about 18%. Contamination is real, but it isn't the main cause. The rest is in the alerts column: the static package catches more fraud **because it alerts more**. The 49 additional frauds it finds relative to the window cost it 1,225 additional alerts, **25 alerts per extra fraud**, against the window's average of 10.4.
+
+The operational conclusion flips sign. The recall drop isn't a defect of recalibration: it's the cost of alerting at the 1% the system promised, instead of the 2.77% the drift was making it alert without anyone deciding so. If the team needs 55.7% recall, the right move is to raise α deliberately, not to get there by accident.
+
+### Two biases that cancel out
+
+One detail in the table looks contradictory: the oracle window, with no fraud in its calibration, keeps the promise **worse** than the contaminated window (FPR 1.29% against 1.10%).
+
+The explanation lies in the day-16 thresholds — 23.97 for the oracle, 28.07 for the window — and in PaySim's drift still being underway throughout the period. A window built from yesterday's legitimate traffic lags one day behind a scale that keeps rising, so its threshold sits a little low and the FPR overshoots α. The fraud that enters the unlabeled window pushes the threshold up and compensates for that lag.
+
+The window's near-perfect FPR is, in part, two errors cancelling each other. In a system with less fraud, or faster drift, that cancellation has no reason to repeat, and it's not something to count on.
+
+### A drift monitor that needs no labels
+
+The right panel compares, day by day, a monitor computable without labels against the real FPR. They order the days almost identically (**Spearman 0.78** across 17 days) and the day-16 spike shows up in both — but only one of them is available that same day.
+
+The monitor overestimates systematically (mean 2.77 against 2.26), and that excess is exactly the bias documented in `tail_ratio`: it's computed over all traffic, fraud included, so when prevalence rises the ratio rises even if legitimate traffic is well calibrated.
+
+It's worth naming what the monitor actually is: for the static package, the tail ratio **is the alert rate divided by α**. It isn't a sophisticated statistic. Its value lies in the operator already having that number the same day, while the real FPR waits weeks for cases to be confirmed. The practical rule that comes out of this is simple: **trigger recalibration when the alert rate departs from α**.
+
+### Limits of this experiment
+
+- **One run, one split, one seed.** The small differences — FPR of 1.10% against 1.29% — carry no confidence intervals, and the bias cancellation rests precisely on them.
+- **The window size wasn't tuned.** It was set equal to the original calibration set, 30,000; sensitivity to that parameter wasn't measured.
+- **The cadence is daily.** With 61,859 transactions on the first day, a single update replaces the entire window. An hourly cadence would be smoother and wasn't tried.
 
 ## The 16 detectors at a glance
 
@@ -1069,7 +1174,8 @@ python -m src.operations.run_operations      # Module 5
 python -m src.conformal.run_conformal        # Module 6
 python -m src.adaptive.run_adaptive          # Module 7
 python -m src.serving.run_serving            # Module 8
-pytest tests/                                # 223 tests, no download needed
+python -m src.serving.run_recalibration      # Module 9
+pytest tests/                                # 247 tests, no download needed
 ```
 
 Every module starts by loading and cleaning the CSV's 6,362,620 rows (493 MB), which is what dominates startup time; detector fit and scoring are timed separately in Module 3's table. The unit tests run in seconds because they use synthetic data and never touch the dataset.
@@ -1099,11 +1205,14 @@ This section exists because measurement errors **look a lot like good results**,
 | A data generator that moved two things at once | A dilution test that didn't reproduce the measured effect | The noise consumed the generator and shifted the signal too | Separate generators for signal and noise |
 | Explaining by occluding one column at a time | Contributions of **-397,000** for the columns that matter most | Features are dependent by construction; occluding one produces an impossible point | Occlusion by groups of dependent columns |
 | Global attribution over random traffic | Negative contributions that explained no alert | Substituting one normal pattern for another gives a less typical hybrid | Computing it over the most anomalous alerts |
+| CI red from the day it was added | All 223 tests passed locally; on GitHub both Python versions failed | Reproducing CI's exact invocation: bare `pytest` doesn't put the repository root on `sys.path`, only `python -m pytest` does | `pytest.ini` with `pythonpath = .` |
 
-Two of my own hypotheses were **refuted by the data** and are documented as such, because a fix that doesn't work is as informative as one that does:
+Four of my own hypotheses were **refuted by the data** and are documented as such, because a fix that doesn't work is as informative as one that does:
 
 - *"Deep SVDD's threshold fails from overfitting; calibrating on held-out data fixes it."* It doesn't — 0.389 against 0.354. That ruled out overfitting and located the cause in the temporal drift of the score's scale.
 - *"The sequential detector fails because averaging dilutes the single anomalous transaction."* All four aggregations land the same (0.099-0.107). The problem is that PaySim doesn't model mule-account behavior.
+- *"Half-Space Trees does poorly because heavy tails crush its min/max normalization."* With equally heavy tails it keeps 0.985 ROC-AUC. The real cause is that its random structure gets diluted by irrelevant features (Module 7).
+- *"The recalibrated window loses recall because unlabeled fraud contaminates the calibration."* An oracle window with no fraud recovers 1.3 of the 7.2 points. The rest came from the static package alerting at 2.77 times what it promised (Module 9).
 
 ## What I'd do differently with real data
 

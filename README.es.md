@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-223%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen?logo=pytest&logoColor=white)
 ![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/tests.yml/badge.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
@@ -23,7 +23,7 @@ Son siete módulos y unas 800 líneas de documentación. Según para qué vengas
 | **Evaluar el criterio técnico** | [Errores de método encontrados y corregidos](#errores-de-método-encontrados-y-corregidos) — es la sección que más dice sobre cómo se trabajó |
 | **Ver los modelos y sus resultados** | El [benchmark del Módulo 3](#módulo-3-benchmark-de-familias-de-detección-no-supervisado) y la [tabla de los 16 detectores](#los-16-detectores-de-un-vistazo) |
 | **Ver si esto se puede desplegar** | El [Módulo 5](#módulo-5-del-ranking-a-la-operación--umbral-dinero-y-envejecimiento), donde el ranking se convierte en decisiones, y el [Módulo 8](#módulo-8-del-modelo-al-servicio), que es lo que efectivamente se despliega |
-| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 223 pruebas |
+| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 247 pruebas |
 | **Correrlo** | [Instalación](#instalación) y [Uso](#uso) |
 
 Cada módulo responde una pregunta que el anterior dejó abierta. No están ordenados por complejidad del modelo sino por esa cadena: se empieza clasificando fraude conocido y se termina preguntando en qué gastar la capacidad de revisión de un equipo.
@@ -46,8 +46,9 @@ Seis módulos, 15 detectores a nivel de transacción, uno a nivel de cuenta y tr
 | Los detectores de **estructura aleatoria se diluyen** con features irrelevantes. Un mecanismo explica el desempeño flojo de LODA y de Half-Space Trees a la vez. | [Módulo 7](#por-qué-es-flojo-y-por-qué-eso-explica-también-a-loda) |
 | **La latencia de producción es 320x la del backtest.** Medir scoring por lotes y suponer que se traslada a transacciones sueltas subestima el costo por dos órdenes de magnitud. | [Módulo 8](#latencia-el-número-que-un-backtest-nunca-muestra) |
 | **Explicar una alerta por oclusión de a una columna no funciona** cuando las features son dependientes por construcción. Dos correcciones fallaron antes de dar con la buena. | [Módulo 8](#por-qué-se-disparó-esta-alerta-y-dos-intentos-fallidos) |
+| **Recalibrar la ventana conforme devuelve la tasa de alertas a lo prometido** (máximo de 11,09% a 2,32%), y una ablación muestra que el recall extra del paquete estático estaba comprado con su exceso de alertas. | [Módulo 9](#módulo-9-recalibración-continua) |
 
-Ocho errores de método aparecieron en el camino y quedaron documentados con su corrección en [una sección propia](#errores-de-método-encontrados-y-corregidos), junto con dos hipótesis propias que los datos refutaron.
+Once errores de método aparecieron en el camino y quedaron documentados con su corrección en [una sección propia](#errores-de-método-encontrados-y-corregidos), junto con cuatro hipótesis propias que los datos refutaron.
 
 ## Mapa de módulos
 
@@ -61,10 +62,11 @@ Ocho errores de método aparecieron en el camino y quedaron documentados con su 
 | **6 — Garantías** | ¿Se puede *garantizar* la tasa de falsas alarmas en vez de estimarla? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
 | **7 — Deriva y etiquetas** | ¿Cómo se adapta un detector solo, y qué hago cuando aparecen unas pocas etiquetas? | `src/adaptive/run_adaptive.py` | [07](notebooks/07_deriva_y_etiquetas.ipynb) |
 | **8 — Servicio** | ¿Cómo se puntúa una transacción nueva, cuánto tarda y por qué se disparó la alerta? | `src/serving/run_serving.py` | [08](notebooks/08_del_modelo_al_servicio.ipynb) |
+| **9 — Recalibración** | Si la calibración avanza con el tráfico, ¿vuelve la tasa de alertas a lo prometido? ¿A qué costo? | `src/serving/run_recalibration.py` | [09](notebooks/09_recalibracion_continua.ipynb) |
 
 ## Nota honesta sobre validación
 
-Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 `python -m src.adaptive.run_adaptive` para el Módulo 7 y `python -m src.serving.run_serving` para el Módulo 8, más **223/223 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 `python -m src.adaptive.run_adaptive` para el Módulo 7, `python -m src.serving.run_serving` para el Módulo 8 y `python -m src.serving.run_recalibration` para el Módulo 9, más **247/247 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
 
 Dos advertencias necesarias para leer bien las métricas:
 
@@ -113,6 +115,7 @@ flowchart LR
     C --> O["run_adaptive.py<br/>streaming, apilado y aprendizaje activo"]
     C --> P["run_serving.py<br/>paquete de scoring + explicación"]
     P --> Q[(detector_package.joblib<br/>detector + escalador + calibración)]
+    Q --> R["run_recalibration.py<br/>ventana conforme que avanza con el tráfico"]
 ```
 
 El proyecto sigue una arquitectura modular que separa claramente la ingesta de datos, el preprocesamiento, la ingeniería de características y el modelado, favoreciendo la reproducibilidad y la testabilidad del código:
@@ -130,7 +133,8 @@ bank-anomaly-detection/
 │   ├── 05_umbral_costo_y_drift.ipynb           # Módulo 5: umbral, dinero y validación temporal
 │   ├── 06_metodos_nuevos_y_conformal.ipynb     # Módulo 6: LODA, FastABOD y detección conforme
 │   ├── 07_deriva_y_etiquetas.ipynb             # Módulo 7: streaming, apilado y activo
-│   └── 08_del_modelo_al_servicio.ipynb         # Módulo 8: paquete de scoring y alertas
+│   ├── 08_del_modelo_al_servicio.ipynb         # Módulo 8: paquete de scoring y alertas
+│   └── 09_recalibracion_continua.ipynb         # Módulo 9: ventana conforme y monitor
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -172,13 +176,16 @@ bank-anomaly-detection/
 │   │   ├── package.py           # DetectorPackage: todo lo que viaja junto
 │   │   ├── explain.py           # Oclusión por grupos de columnas dependientes
 │   │   ├── predict.py           # API de scoring: score, p-valor, alerta, motivo
-│   │   └── run_serving.py       # Construcción del paquete, latencia y carga
+│   │   ├── run_serving.py       # Construcción del paquete, latencia y carga
+│   │   ├── recalibration.py     # Ventana conforme que avanza y monitores sin etiquetas
+│   │   └── run_recalibration.py # Cuatro estrategias de calibración, día por día
 │   └── utils/                  # Funciones auxiliares compartidas
 ├── tests/                 # Pruebas unitarias (pytest): preprocessing, features, baseline
 │                           # MAD, autoencoder, metrics store, familias, ensembles,
 │                           # modelos profundos, secuencias, umbrales, costos, temporal,
 │                           # detección conforme, streaming, apilado, activo,
-│                           # paquete de scoring y explicación de alertas
+│                           # paquete de scoring y explicación de alertas,
+│                           # recalibración continua
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -317,6 +324,14 @@ python -m src.serving.run_serving
 ```
 
 Construye el paquete de scoring desplegable —detector, escalador, calibración, umbral, contrato de columnas, fondo y grupos— lo serializa, verifica que al recargarlo reproduzca los mismos scores, y mide latencia por transacción suelta contra la amortizada por lote, la carga de alertas por día y en qué grupos de columnas se apoyan las alertas.
+
+Recalibración continua (Módulo 9):
+
+```bash
+python -m src.serving.run_recalibration
+```
+
+Simula día por día cuatro estrategias de calibración sobre el período tardío —estática, ventana sin etiquetas, ventana sin las alertas y una ventana oráculo con etiquetas al instante— con el mismo detector y los mismos scores, y compara la tasa de alertas contra la prometida, el fraude capturado y un monitor de deriva que no necesita etiquetas.
 
 
 ## Módulo 1: El techo supervisado — qué se consigue teniendo todas las etiquetas
@@ -977,9 +992,99 @@ Dos límites del método que quedan en pie, y que conviene tener presentes al le
 
 ### Integración continua
 
-El repositorio nunca había tenido CI. `.github/workflows/tests.yml` corre las 223 pruebas en cada push sobre **Python 3.10 y 3.12**, con la rueda de CPU de PyTorch. Las pruebas usan datos sintéticos y no descargan PaySim, que es lo que las vuelve viables en un runner.
+El repositorio nunca había tenido CI. `.github/workflows/tests.yml` corre las 247 pruebas en cada push sobre **Python 3.10 y 3.12**, con la rueda de CPU de PyTorch. Las pruebas usan datos sintéticos y no descargan PaySim, que es lo que las vuelve viables en un runner.
 
 La matriz de dos versiones no es decorativa: durante el desarrollo de este módulo el entorno pasó de Python 3.10 con pandas 2.x a Python 3.12 con **pandas 3.0.5, numpy 2.5.2 y scikit-learn 1.9.0**, y 152 de las pruebas de entonces pasaron sin un solo cambio de código. Vale la pena que eso quede verificado en cada commit y no por accidente.
+
+## Módulo 9: Recalibración continua
+
+El Módulo 8 dejó el hallazgo operativo más serio del repositorio: el paquete desplegable promete 1% de alertas y entrega 1,57% el día 0 y **11,10% el día 16**. Las piezas para arreglarlo estaban construidas pero sueltas — el Módulo 6 mostró que el p-valor conforme cumple su garantía mientras calibración y tráfico sean intercambiables, y el Módulo 7 que refrescar una ventana cuesta una pasada lineal. Este módulo las junta: el conjunto de calibración deja de ser fijo y avanza con el tráfico reciente.
+
+```bash
+python -m src.serving.run_recalibration
+```
+
+### Cuatro estrategias, un solo detector
+
+Mismo detector, mismo escalador y misma calibración inicial que el paquete del Módulo 8. Los scores del período de prueba se calculan una sola vez; lo único que cambia entre estrategias es qué pasa con la calibración al terminar cada día.
+
+| Estrategia | Qué se agrega a la ventana al cerrar el día | Desplegable |
+|---|---|---|
+| `estatico` | Nada. Es el paquete del Módulo 8 | Sí |
+| `ventana` | Todos los scores del día, sin etiquetas | Sí |
+| `ventana_sin_alertas` | Solo los que no se alertaron, para no meter fraude | Sí |
+| `ventana_oraculo` | Solo las legítimas, con etiquetas al instante | **No** — es una ablación |
+
+La última no se puede desplegar: en producción las etiquetas de fraude llegan semanas tarde. Está para separar dos efectos que las otras mezclan, y terminó refutando la explicación que motivó agregarla.
+
+Dos decisiones de diseño condicionan todo:
+
+- **La ventana se mide en transacciones (30.000), no en días.** El volumen de PaySim cae 2.111x hacia fin de mes; una ventana de "los últimos siete días" terminaría con unos pocos cientos de scores, y con n puntos de calibración el p-valor más chico que se puede resolver es 1/(n+1).
+- **Primero se puntúa el día contra la calibración vigente, y recién después se lo agrega.** Al revés, cada día se calibraría con sus propios scores y la tasa de alertas saldría perfecta por construcción, sin medir nada. Una prueba fija que el día 0 sea idéntico en las cuatro estrategias.
+
+### Resultados
+
+| Estrategia | Tasa media | Tasa máx. | FPR media | Alertas | Fraude capturado | Alertas por fraude |
+|---|---|---|---|---|---|---|
+| estático | 2,77% | 11,09% | 2,26% | 4.683 | **55,7%** (381) | 12,3 |
+| **ventana** | **1,53%** | **2,32%** | **1,10%** | **3.458** | 48,5% (332) | **10,4** |
+| ventana oráculo | 1,73% | 3,05% | 1,29% | 3.651 | 49,9% (341) | 10,7 |
+| ventana sin alertas | 20,35% | 48,22% | 19,72% | 22.062 | 83,6% (572) | 38,6 |
+
+*(Prometido: α = 1%. Tasas promediadas sobre los 17 días con al menos 1.000 transacciones; alertas y fraude sobre todos los días. 684 fraudes en el período.)*
+
+![Recalibración continua](data/processed/figures/recalibration.png)
+
+**Cómo leer la figura.** A la izquierda, el porcentaje de transacciones alertadas cada día por las cuatro estrategias, con la línea punteada en el 1% prometido. A la derecha, solo para el paquete estático, dos series que miden lo mismo con y sin etiquetas: la razón de cola —fracción alertada dividida por α, calculable el mismo día— y la FPR real dividida por α, que necesita saber qué transacciones eran legítimas.
+
+Lo que hay que mirar a la izquierda es la **forma**, no un día puntual: la línea estática sube de forma sostenida hasta el pico del día 16, la roja se dispara desde el día 1, y las dos ventanas que recalibran se quedan pegadas al 1-3% durante todo el período.
+
+### La ventana devuelve la tasa de alertas a lo prometido
+
+Recalibrar con el tráfico de cada día baja la FPR media de 2,26% a **1,10%**, la tasa máxima de 11,09% a **2,32%**, y el desvío medio respecto del 1% prometido de 1,77 a **0,58 puntos**. En el período se generan 1.225 alertas menos.
+
+El mecanismo se ve en el umbral: el del paquete estático se queda en 14,01 mientras la escala del score se corre; el de la ventana sube a **28,07** para el día 16. No es el detector el que mejora — es la calibración la que acompaña a la deriva que los Módulos 5 y 6 habían diagnosticado.
+
+### Excluir las alertas de la ventana: el lazo se confirma sobre datos reales
+
+La idea tentadora para no contaminar la calibración con fraude es no agregar lo que ya se alertó. Las pruebas unitarias predecían sobre datos sintéticos que eso cierra un lazo de retroalimentación, y sobre PaySim ocurre con toda claridad:
+
+- el umbral cae de 14,01 a **7,51 en un solo día** —el día 0 tiene 61.859 transacciones, más que la ventana, así que la calibración entera se reemplaza por ese tráfico sin su cola— y sigue bajando hasta **0,98**;
+- la tasa de alertas llega a **48,22%** el día 16, con **22.062 alertas** en el período: 4,7 veces las del paquete estático.
+
+Su 83,6% de fraude capturado no es un mérito. Alertar sobre casi la mitad del tráfico atrapa fraude por volumen: son 38,6 alertas por cada fraude encontrado, casi cuatro veces lo que le cuesta a la ventana.
+
+### El precio de cumplir lo prometido, y una hipótesis que no sobrevivió
+
+La ventana atrapa 7,2 puntos menos de fraude que el paquete estático (48,5% contra 55,7%). La explicación natural era la contaminación: la ventana se alimenta sin etiquetas, el fraude engorda su cola, el umbral sube de más y se deja de alertar justamente lo que había que alertar.
+
+La ventana oráculo existe para medir eso: es idéntica a la ventana, pero agrega solo transacciones legítimas. Si la contaminación explicara la pérdida, el oráculo recuperaría el recall del estático.
+
+**Recupera 1,3 puntos de los 7,2** — alrededor del 18%. La contaminación existe, pero no es la causa principal. El resto está en la columna de alertas: el paquete estático atrapa más fraude **porque alerta más**. Los 49 fraudes adicionales que encuentra respecto de la ventana le cuestan 1.225 alertas adicionales, **25 alertas por cada fraude extra**, contra un promedio de 10,4 en la ventana.
+
+La conclusión operativa cambia de signo. La caída de recall no es un defecto de recalibrar: es el costo de alertar al 1% que el sistema prometía, en lugar del 2,77% que la deriva le hacía alertar sin que nadie lo decidiera. Si el equipo necesita el 55,7% de recall, lo correcto es subir α a conciencia, no conseguirlo por accidente.
+
+### Dos sesgos que se cancelan
+
+Hay un detalle en la tabla que parece contradictorio: la ventana oráculo, sin fraude en la calibración, cumple **peor** lo prometido que la ventana contaminada (FPR 1,29% contra 1,10%).
+
+La explicación está en los umbrales del día 16 —23,97 el oráculo, 28,07 la ventana— y en que la deriva de PaySim sigue en curso durante todo el período. Una ventana armada con el tráfico legítimo de ayer va un día detrás de una escala que sigue subiendo, así que su umbral queda algo bajo y la FPR se pasa de α. El fraude que entra en la ventana sin etiquetas empuja el umbral hacia arriba y compensa ese retraso.
+
+La FPR casi perfecta de la ventana es, en parte, dos errores que se anulan. En un sistema con menos fraude, o con una deriva más rápida, esa cancelación no tendría por qué repetirse, y no conviene contar con ella.
+
+### El monitor de deriva que no necesita etiquetas
+
+El panel derecho compara, día por día, un monitor calculable sin etiquetas contra la FPR real. Ordenan los días casi igual (**Spearman 0,78** sobre 17 días) y el pico del día 16 aparece en los dos — pero solo uno está disponible ese mismo día.
+
+El monitor sobreestima de forma sistemática (media 2,77 contra 2,26), y ese exceso es exactamente el sesgo documentado en `tail_ratio`: se calcula sobre todo el tráfico, fraude incluido, así que cuando la prevalencia sube la razón sube aunque lo legítimo esté bien calibrado.
+
+Vale nombrar lo que el monitor es en realidad: para el paquete estático, la razón de cola **es la tasa de alertas dividida por α**. No es una estadística sofisticada. Su valor está en que el operador ya tiene ese número el mismo día, mientras la FPR real espera semanas a que se confirmen los casos. La regla práctica que sale de acá es simple: **disparar la recalibración cuando la tasa de alertas se aparta de α**.
+
+### Límites de este experimento
+
+- **Una sola corrida, un solo split, una sola semilla.** Las diferencias chicas —la FPR de 1,10% contra 1,29%— no tienen intervalos de confianza, y la cancelación de sesgos descansa justamente en ellas.
+- **El tamaño de ventana no se ajustó.** Se eligió igual al conjunto de calibración original, 30.000; la sensibilidad a ese parámetro no se midió.
+- **La cadencia es diaria.** Con 61.859 transacciones el primer día, una sola actualización reemplaza la ventana completa. Una cadencia horaria sería más suave y no se probó.
 
 ## Los 16 detectores de un vistazo
 
@@ -1069,7 +1174,8 @@ python -m src.operations.run_operations      # Módulo 5
 python -m src.conformal.run_conformal        # Módulo 6
 python -m src.adaptive.run_adaptive          # Módulo 7
 python -m src.serving.run_serving            # Módulo 8
-pytest tests/                                # 223 pruebas, sin descargar nada
+python -m src.serving.run_recalibration      # Módulo 9
+pytest tests/                                # 247 pruebas, sin descargar nada
 ```
 
 Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), que es lo que domina el tiempo de arranque; el ajuste y el scoring de los detectores están cronometrados por separado en la tabla del Módulo 3. Las pruebas unitarias corren en segundos porque usan datos sintéticos y no tocan el dataset.
@@ -1099,11 +1205,14 @@ Esta sección existe porque los errores de medición **se parecen mucho a los bu
 | Generador de datos que movía dos cosas a la vez | Un test de dilución que no reproducía el efecto medido | El ruido consumía el generador y desplazaba también la señal | Generadores separados para señal y ruido |
 | Explicación por oclusión de a una columna | Aportes de **-397.000** para las columnas que más pesan | Las features son dependientes por construcción; ocluir una sola produce un punto imposible | Oclusión por grupos de columnas dependientes |
 | Atribución global sobre tráfico al azar | Aportes negativos que no explicaban ninguna alerta | Sustituir un patrón normal por otro da un híbrido menos típico | Calcularla sobre las alertas más anómalas |
+| CI en rojo desde el día en que se agregó | Localmente pasaban las 223 pruebas; en GitHub fallaban las dos versiones de Python | Reproducir la invocación exacta de CI: `pytest` a secas no agrega la raíz del repositorio a `sys.path`, solo `python -m pytest` lo hace | `pytest.ini` con `pythonpath = .` |
 
-Dos hipótesis propias quedaron **refutadas por los datos** y se documentan como tales, porque un arreglo que no funciona informa tanto como uno que sí:
+Cuatro hipótesis propias quedaron **refutadas por los datos** y se documentan como tales, porque un arreglo que no funciona informa tanto como uno que sí:
 
 - *"El umbral de Deep SVDD falla por sobreajuste; calibrar sobre datos retenidos lo arregla."* No lo arregla — 0.389 contra 0.354. Eso descartó el sobreajuste y localizó la causa en la deriva temporal de la escala.
 - *"El detector secuencial falla porque promediar diluye la única transacción anómala."* Las cuatro formas de agregar dan lo mismo (0.099-0.107). El problema es que PaySim no modela comportamiento de cuenta mula.
+- *"Half-Space Trees rinde mal porque las colas pesadas aplastan su normalización min/max."* Con colas igual de pesadas mantiene ROC-AUC 0.985. La causa real es que su estructura aleatoria se diluye con features irrelevantes (Módulo 7).
+- *"La ventana recalibrada pierde recall porque el fraude sin etiquetar contamina la calibración."* Una ventana oráculo sin fraude recupera 1,3 de los 7,2 puntos. El resto venía de que el paquete estático alertaba 2,77 veces lo prometido (Módulo 9).
 
 ## Qué haría distinto con datos reales
 
