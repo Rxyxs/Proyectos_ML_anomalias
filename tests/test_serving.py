@@ -177,7 +177,7 @@ def test_la_importancia_global_ordena_por_aporte_absoluto(paquete):
     assert list(tabla["aporte_absoluto_medio"]) == sorted(
         tabla["aporte_absoluto_medio"], reverse=True
     )
-    assert tabla.iloc[0]["feature"] == "monto"
+    assert tabla.iloc[0]["grupo"] == "monto"
 
 
 # ---------------------------------------------------------------- API de alertas
@@ -204,3 +204,131 @@ def test_las_alertas_principales_vienen_ordenadas_por_p_valor(paquete):
 
     assert len(alertas) == 5
     assert alertas["p_valor"].is_monotonic_increasing
+
+
+def test_el_paquete_trae_su_propio_fondo(paquete):
+    assert paquete.background is not None
+    assert paquete.background.shape == (50, 4)
+    assert paquete.metadata["n_background"] == 50
+
+
+def test_la_oclusion_acepta_un_fondo_de_varias_filas(paquete):
+    """Promediar sobre varias filas normales, no sobre un unico punto tipico."""
+    rng = np.random.default_rng(0)
+    fondo = rng.normal(size=(10, 4))
+    punto = np.zeros((1, 4))
+    punto[0, 2] = 10.0
+
+    aporte = occlusion_attribution(paquete.score_from_scaled, punto, fondo, FEATURES)
+
+    assert aporte.shape == (1, 4)
+    assert np.isfinite(aporte).all()
+
+
+def test_el_fondo_da_una_atribucion_distinta_que_un_punto_unico(paquete):
+    """Es la correccion que vuelve util a la explicacion.
+
+    Ocluir contra un unico punto tipico rompe las correlaciones entre columnas; sobre un
+    modelo de densidad eso manda la transaccion a una region de probabilidad casi nula y
+    produce aportes negativos gigantes que no explican nada. Promediar sobre filas normales
+    reales mantiene combinaciones que si ocurren.
+    """
+    punto = np.zeros((1, 4))
+    punto[0, 0] = 8.0
+
+    con_punto = occlusion_attribution(paquete.score_from_scaled, punto, np.zeros(4), FEATURES)
+    con_fondo = occlusion_attribution(
+        paquete.score_from_scaled, punto, paquete.background, FEATURES
+    )
+
+    assert not np.allclose(con_punto, con_fondo)
+
+
+def test_la_explicacion_de_una_alerta_usa_el_fondo_del_paquete(paquete):
+    """Sin fondo la atribucion caeria al vector cero, y el resultado seria otro."""
+    from src.serving.predict import _baseline_from_package
+
+    fondo = _baseline_from_package(paquete)
+    assert fondo.ndim == 2 and fondo.shape[0] == 50
+
+    sin_fondo = DetectorPackage(
+        detector=paquete.detector, scaler=paquete.scaler,
+        calibration_scores=paquete.calibration_scores,
+        feature_names=paquete.feature_names, alpha=paquete.alpha, background=None,
+    )
+    assert _baseline_from_package(sin_fondo).shape == (4,)
+
+
+# ---------------------------------------------------------------- grupos dependientes
+
+PAYSIM_COLS = [
+    "step", "amount", "oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest",
+    "type_CASH_IN", "type_CASH_OUT", "type_DEBIT", "type_PAYMENT", "type_TRANSFER",
+    "errorBalanceOrig", "errorBalanceDest", "origBalanceZero", "destBalanceZero",
+]
+
+
+def test_los_grupos_de_paysim_respetan_las_dependencias():
+    """Monetario junto, dummies de tipo juntas, step solo.
+
+    Las columnas monetarias van todas en un grupo porque `amount` aparece en las dos formulas
+    de error y enlaza origen con destino; las dummies porque suman 1.
+    """
+    from src.serving.explain import infer_dependency_groups
+
+    grupos = infer_dependency_groups(PAYSIM_COLS)
+    por_tamano = {len(g): [PAYSIM_COLS[j] for j in g] for g in grupos}
+
+    assert sorted(len(g) for g in grupos) == [1, 5, 9]
+    assert por_tamano[1] == ["step"]
+    assert all(c.startswith("type_") for c in por_tamano[5])
+    assert "amount" in por_tamano[9] and "errorBalanceOrig" in por_tamano[9]
+
+
+def test_los_grupos_cubren_cada_columna_exactamente_una_vez():
+    from src.serving.explain import infer_dependency_groups
+
+    cubiertas = sorted(j for g in infer_dependency_groups(PAYSIM_COLS) for j in g)
+    assert cubiertas == list(range(len(PAYSIM_COLS)))
+
+
+def test_las_columnas_de_un_grupo_comparten_atribucion(paquete):
+    """Se movieron juntas, asi que repartir el efecto entre ellas seria inventarlo."""
+    grupos = [[0, 1], [2], [3]]
+    aporte = occlusion_attribution(
+        paquete.score_from_scaled, np.full((1, 4), 5.0), paquete.background, FEATURES, grupos
+    )
+    assert aporte[0, 0] == aporte[0, 1]
+
+
+def test_ocluir_por_grupo_da_un_resultado_distinto_que_de_a_una(paquete):
+    """Es la correccion del modulo 8: de a una produce puntos imposibles."""
+    punto = np.full((1, 4), 6.0)
+
+    de_a_una = occlusion_attribution(
+        paquete.score_from_scaled, punto, paquete.background, FEATURES
+    )
+    por_grupo = occlusion_attribution(
+        paquete.score_from_scaled, punto, paquete.background, FEATURES, [[0, 1, 2], [3]]
+    )
+    assert not np.allclose(de_a_una, por_grupo)
+
+
+def test_rechaza_grupos_que_no_cubren_todas_las_columnas(paquete):
+    with pytest.raises(ValueError, match="exactamente una vez"):
+        occlusion_attribution(
+            paquete.score_from_scaled, np.zeros((2, 4)), np.zeros(4), FEATURES, [[0, 1]]
+        )
+
+
+def test_la_explicacion_por_grupo_no_repite_la_misma_columna(paquete):
+    """Con grupos se devuelve una entrada por grupo, no tres veces el mismo numero."""
+    motivos = explain_rows(
+        paquete.score_from_scaled, np.full((1, 4), 7.0), paquete.background,
+        FEATURES, top_k=3, groups=[[0, 1, 2], [3]],
+    )
+    etiquetas = [nombre for nombre, _ in motivos[0]]
+
+    assert len(motivos[0]) == 2, "solo hay dos grupos, no puede devolver tres entradas"
+    assert len(set(etiquetas)) == 2
+    assert any("+" in e for e in etiquetas), "el grupo multiple debe nombrarse con sus columnas"

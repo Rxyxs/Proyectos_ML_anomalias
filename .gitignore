@@ -8,3 +8,4 @@ __pycache__/
 *.pkl
 *.duckdb
 .DS_Store
+.venv310/

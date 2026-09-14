@@ -5,7 +5,8 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectors-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-223%20passing-brightgreen?logo=pytest&logoColor=white)
+![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/tests.yml/badge.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -21,8 +22,8 @@ Seven modules and roughly 800 lines of documentation. Depending on what brings y
 | **Understand what was done, in 3 minutes** | The [findings summary](#summary-what-was-learned) and the [module map](#module-map) |
 | **Assess technical judgment** | [Methodological errors found and corrected](#methodological-errors-found-and-corrected) — the section that says the most about how the work was done |
 | **See the models and their results** | The [Module 3 benchmark](#module-3-detector-family-benchmark-unsupervised) and the [table of 16 detectors](#the-16-detectors-at-a-glance) |
-| **Judge whether this could ship** | [Module 5](#module-5-from-ranking-to-operation--threshold-money-and-aging), where the ranking turns into decisions |
-| **Review the code** | `src/unsupervised/families.py` for the classical detectors, `src/deep/` for the deep ones, `tests/` for the 193 tests |
+| **Judge whether this could ship** | [Module 5](#module-5-from-ranking-to-operation--threshold-money-and-aging), where the ranking turns into decisions, and [Module 8](#module-8-from-model-to-service), which is what actually gets deployed |
+| **Review the code** | `src/unsupervised/families.py` for the classical detectors, `src/deep/` for the deep ones, `tests/` for the 223 tests |
 | **Run it** | [Installation](#installation) and [Usage](#usage) |
 
 Each module answers a question the previous one left open. They aren't ordered by model complexity but by that chain: it starts by classifying known fraud and ends by asking where a team's review capacity should be spent.
@@ -43,6 +44,8 @@ Six modules, 15 transaction-level detectors, one account-level detector and thre
 | Adding methods **doesn't always add coverage**: the two new detectors produce the repository's first redundant pairs (ρ up to 0.99). | [Module 6](#adding-detectors-is-not-the-same-as-adding-coverage) |
 | **Fifty labels well spent beat a thousand at random**: at 0.08% prevalence, random sampling finds not one positive up to 500 labels. | [Module 7](#fifty-labels-well-spent-beat-a-thousand-at-random) |
 | Randomly-structured detectors **get diluted** by irrelevant features. One mechanism explains both LODA's and Half-Space Trees' weak showing. | [Module 7](#why-its-weak-and-why-that-also-explains-loda) |
+| **Production latency is 320x the backtest's.** Measuring batch scoring and assuming it carries over to single transactions understates cost by two orders of magnitude. | [Module 8](#latency-the-number-a-backtest-never-shows) |
+| **Explaining an alert by occluding one column at a time doesn't work** when features are dependent by construction. Two corrections failed before the right one. | [Module 8](#why-this-alert-fired-and-two-failed-attempts) |
 
 Eight methodological errors surfaced along the way and are documented with their fixes in [a section of their own](#methodological-errors-found-and-corrected), together with two of my own hypotheses that the data refuted.
 
@@ -57,10 +60,11 @@ Eight methodological errors surfaced along the way and are documented with their
 | **5 — Operations** | Where do I cut the score, how much money does it save, and will it still work next month? | `src/operations/run_operations.py` | [05](notebooks/05_umbral_costo_y_drift.ipynb) |
 | **6 — Guarantees** | Can the false-alarm rate be *guaranteed* rather than estimated? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
 | **7 — Drift and labels** | How does a detector adapt on its own, and what do I do when a few labels appear? | `src/adaptive/run_adaptive.py` | [07](notebooks/07_deriva_y_etiquetas.ipynb) |
+| **8 — Serving** | How do you score a new transaction, how long does it take, and why did the alert fire? | `src/serving/run_serving.py` | [08](notebooks/08_del_modelo_al_servicio.ipynb) |
 
 ## Honest note on validation
 
-The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, `python -m src.conformal.run_conformal` for Module 6, and `python -m src.adaptive.run_adaptive` for Module 7, plus **193/193 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
+The numbers in this README **come from an actual run** of the pipeline on the full PaySim dataset (6,362,620 rows downloaded via `kagglehub`), not from estimates: `python -m src.unsupervised.train_unsupervised` for Module 2, `python -m src.unsupervised.benchmark` for Module 3, `python -m src.deep.train_deep` for Module 4, `python -m src.operations.run_operations` for Module 5, `python -m src.conformal.run_conformal` for Module 6, `python -m src.adaptive.run_adaptive` for Module 7, and `python -m src.serving.run_serving` for Module 8, plus **223/223 unit tests passing** (`pytest tests/`, on synthetic data, no download needed). Fit and scoring times were measured on that same machine (Windows 10, CPU) and are meant for comparing detectors *against each other*, not as an absolute hardware reference.
 
 Two caveats you need in order to read the metrics correctly:
 
@@ -107,6 +111,8 @@ flowchart LR
     M --> H
     C --> N["run_conformal.py<br/>conformal p-values, guaranteed coverage"]
     C --> O["run_adaptive.py<br/>streaming, stacking and active learning"]
+    C --> P["run_serving.py<br/>scoring package + explanation"]
+    P --> Q[(detector_package.joblib<br/>detector + scaler + calibration)]
 ```
 
 The project follows a modular architecture that clearly separates data ingestion, preprocessing, feature engineering, and modeling, favoring reproducibility and code testability:
@@ -123,7 +129,8 @@ bank-anomaly-detection/
 │   ├── 04_modelos_profundos_y_secuencias.ipynb # Module 4: VAE, Deep SVDD and sequential detector
 │   ├── 05_umbral_costo_y_drift.ipynb           # Module 5: threshold, money, temporal validation
 │   ├── 06_metodos_nuevos_y_conformal.ipynb     # Module 6: LODA, FastABOD and conformal detection
-│   └── 07_deriva_y_etiquetas.ipynb             # Module 7: streaming, stacking, active learning
+│   ├── 07_deriva_y_etiquetas.ipynb             # Module 7: streaming, stacking, active learning
+│   └── 08_del_modelo_al_servicio.ipynb         # Module 8: scoring package and alerts
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Download (kagglehub) and load the PaySim dataset
@@ -161,11 +168,17 @@ bank-anomaly-detection/
 │   │   ├── stacking.py          # The 16 detectors' scores as features
 │   │   ├── active.py            # Selection strategies for review
 │   │   └── run_adaptive.py      # Module 7's three experiments
+│   ├── serving/                 # Module 8: from trained model to service
+│   │   ├── package.py           # DetectorPackage: everything that travels together
+│   │   ├── explain.py           # Occlusion by groups of dependent columns
+│   │   ├── predict.py           # Scoring API: score, p-value, alert, reason
+│   │   └── run_serving.py       # Package build, latency and alert load
 │   └── utils/                  # Shared helper functions
 ├── tests/                 # Unit tests (pytest): preprocessing, features, MAD baseline,
 │                           # autoencoder, metrics store, families, ensembles,
 │                           # deep models, sequences, thresholds, costs, temporal,
-│                           # conformal detection, streaming, stacking, active
+│                           # conformal detection, streaming, stacking, active,
+│                           # scoring package and alert explanation
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -296,6 +309,14 @@ python -m src.adaptive.run_adaptive
 ```
 
 Compares Half-Space Trees with a fixed window against one refreshed daily, measures how much the 16 detectors' scores contribute as classifier features across labeling budgets, and simulates the review loop with five selection strategies.
+
+From model to service (Module 8):
+
+```bash
+python -m src.serving.run_serving
+```
+
+Builds the deployable scoring package — detector, scaler, calibration, threshold, column contract, background and groups — serializes it, verifies that reloading reproduces the same scores, and measures single-transaction latency against the batch-amortized one, the daily alert load, and which column groups the alerts rest on.
 
 
 ## Module 1: The supervised ceiling — what you get with every label
@@ -860,6 +881,106 @@ With the variable isolated, the conclusion flips:
 
 Without the control strategy I would have published "exploring beats exploiting", which is false.
 
+## Module 8: From model to service
+
+The previous seven modules train and evaluate sixteen detectors. None of them leaves anything you can score a new transaction with.
+
+That gap contradicts the thread running through Modules 5 to 7: thresholds were computed, money per operating point was measured and recalibration was discussed, with no object able to take a transaction and answer. This module builds that object and measures what it costs to use.
+
+```bash
+python -m src.serving.run_serving
+```
+
+### What has to travel together
+
+A serialized model isn't enough. Deciding on a transaction — and being able to explain the decision — takes six things, and if any of them travels separately the system breaks silently:
+
+| Component | Why it can't be missing |
+|---|---|
+| **Fitted detector** | The model itself |
+| **Scaler** | Fitted on training data *only*. Refitting it on the day's traffic would shift the scale under the detector's feet |
+| **Calibration scores** | They turn a raw score into a conformal p-value (Module 6). Without them the score is a number with no units |
+| **α level** | The false-alarm rate the system promises |
+| **Column contract** | Feature names and order |
+| **Background and dependency groups** | To explain the alert. An explanation computed against a different background isn't the same explanation |
+
+The column contract is the most treacherous of the six. A `DataFrame` with the same columns **in a different order** produces perfectly plausible, completely wrong scores, and raises nothing. `DetectorPackage` reorders by name and rejects missing or unexpected columns; three tests exist for that alone.
+
+### Why Gaussian Mixture is packaged rather than the best by PR-AUC
+
+On the temporal split, Deep SVDD wins the ranking (0.368 against 0.263). But Module 5 showed its threshold promises 0.1% false alarms and delivers **35%**: it's undeployable as it stands.
+
+GMM comes second in ranking and first in what matters operationally — calibration (ratio 1.4 against 354) and money saved (944 M against 833 M). **Picking the model by its ranking position and taking the threshold for granted is exactly the error Module 5 makes visible**, and this module is where that lesson gets paid.
+
+### Latency: the number a backtest never shows
+
+Module 3 timed batch scoring over 58,213 rows. That's the right metric for a backtest and the wrong one for production: there, transactions arrive **one at a time**, and the fixed per-call cost dominates the marginal per-row cost.
+
+| Mode | ms per transaction |
+|---|---|
+| One at a time (online) | **15.05** |
+| Batched (backtest) | 0.047 |
+| One at a time, explained | 355.92 |
+
+**A 320x gap** between the backtest number and the production one. Reporting 0.047 ms and assuming it carries over to the online case understates the real cost by two orders of magnitude.
+
+The third row is the cost of delivering an *actionable* alert. Explaining costs one scoring pass per group per background row — three groups times fifty rows, a hundred and fifty calls — which is why only what will be reviewed gets explained, exactly the bounded queue from Module 5.
+
+### How many alerts it generates per day
+
+The package promises α = 1%. On the later period's real traffic that turns into a concrete workload, and into one more confirmation of the drift:
+
+| | |
+|---|---|
+| Median alerts per day | **153** |
+| Mean observed rate | **2.77%** (promised: 1.00%) |
+| Rate on day 0 → day 16 | 1.57% → **11.10%** |
+| Fraud captured | 381 of 684 (**55.7%**) |
+
+The rate peels away from the promised 1% and reaches 11% by day 16. It's the same phenomenon Modules 5 and 6 measured with thresholds and p-values, now expressed in the unit a team cares about: **the workload multiplies sevenfold in seventeen days** without anyone touching the model.
+
+### Why this alert fired, and two failed attempts
+
+An analyst receiving a flagged transaction needs to know what flagged it. Of the sixteen detectors only LODA carries its own attribution (Module 6), so a model-agnostic method is needed: occlusion — replace a feature with typical values and measure how far the score drops.
+
+The naive version **doesn't work on PaySim**, and finding that out took two measured attempts:
+
+1. **Occluding against the training median** gave attributions of **-397,000** for the columns that matter most. A large negative number means "removing this column makes the transaction far stranger", which explains nothing.
+2. **Averaging over a background of fifty normal rows** — the standard correction, the one SHAP makes by integrating over a reference distribution — didn't fix it either: the negatives grew to **-909,000**.
+
+The cause wasn't what it substitutes against but **that it substitutes one column at a time**. PaySim's features are linearly dependent by construction: `errorBalanceOrig` is exactly `newbalanceOrig + amount - oldbalanceOrg`, and the five `type_*` dummies sum to 1. Moving one alone produces balances that don't reconcile or a transaction with no type, and a density model sends that impossible point to a region of near-zero probability.
+
+The fix is occluding by **groups** of dependent columns. `infer_dependency_groups` derives them from the names, and on PaySim gives three: monetary (9 columns, together because `amount` links origin to destination), transaction type (5 dummies) and `step`. With that the explanation becomes readable:
+
+```
+amount+8 más (+11464.10), step (+15.68), type_CASH_IN+4 más (-1791.54)
+```
+
+The monetary pattern contributes +11,464 — replacing it with a normal one collapses the anomaly — while the transaction type reduces it. The five most anomalous alerts in the period are all real fraud, and all five are explained the same way.
+
+### What the alerts rest on
+
+Averaged over the 500 most anomalous alerts:
+
+| Group | Columns | Mean contribution | Mean absolute contribution |
+|---|---|---|---|
+| `type_*` | 5 | -1481.86 | 1635.64 |
+| monetary | 9 | **+630.52** | 1295.83 |
+| `step` | 1 | +3.17 | 4.20 |
+
+It's computed over the **most anomalous** alerts rather than random traffic for a reason that also took a run to discover: substituting one normal pattern for another produces a less typical hybrid, so on ordinary transactions the contribution comes out negative and says nothing about what fires the alerts.
+
+Two limits of the method remain, worth keeping in mind when reading the `motivo` column:
+
+- **It measures marginal contribution, not causation**, like any permutation method.
+- **Attribution is per group, not per column.** The nine monetary columns moved together; splitting the effect among them would invent a precision the data's structure doesn't allow. "The balance pattern fired the alert" is an honest explanation; "`newbalanceOrig` fired it" would not be.
+
+### Continuous integration
+
+The repository never had CI. `.github/workflows/tests.yml` runs all 223 tests on every push across **Python 3.10 and 3.12**, using PyTorch's CPU wheel. The tests use synthetic data and never download PaySim, which is what makes them viable on a runner.
+
+The two-version matrix isn't decorative: while this module was being built the environment moved from Python 3.10 with pandas 2.x to Python 3.12 with **pandas 3.0.5, numpy 2.5.2 and scikit-learn 1.9.0**, and 152 of the tests at the time passed without a single code change. That's worth verifying on every commit rather than by accident.
+
 ## The 16 detectors at a glance
 
 All trained on normal transactions only, all following scikit-learn's `fit` / `score_samples` convention (lower = more anomalous), all comparable against each other on Module 3's split.
@@ -947,7 +1068,8 @@ python -m src.deep.train_deep                # Module 4
 python -m src.operations.run_operations      # Module 5
 python -m src.conformal.run_conformal        # Module 6
 python -m src.adaptive.run_adaptive          # Module 7
-pytest tests/                                # 193 tests, no download needed
+python -m src.serving.run_serving            # Module 8
+pytest tests/                                # 223 tests, no download needed
 ```
 
 Every module starts by loading and cleaning the CSV's 6,362,620 rows (493 MB), which is what dominates startup time; detector fit and scoring are timed separately in Module 3's table. The unit tests run in seconds because they use synthetic data and never touch the dataset.
@@ -975,6 +1097,8 @@ This section exists because measurement errors **look a lot like good results**,
 | Active learning with two confounded variables | "Exploring beats exploiting", and finds twice the fraud | The static queue and the learning queue weren't comparable | Control strategy `top_model`; the conclusion flipped |
 | A test tolerance set by eye | Failed at α=0.001 with nothing wrong in the code | Binomial error at n=50,000 is ±0.00014 | Tolerance derived from sampling noise |
 | A data generator that moved two things at once | A dilution test that didn't reproduce the measured effect | The noise consumed the generator and shifted the signal too | Separate generators for signal and noise |
+| Explaining by occluding one column at a time | Contributions of **-397,000** for the columns that matter most | Features are dependent by construction; occluding one produces an impossible point | Occlusion by groups of dependent columns |
+| Global attribution over random traffic | Negative contributions that explained no alert | Substituting one normal pattern for another gives a less typical hybrid | Computing it over the most anomalous alerts |
 
 Two of my own hypotheses were **refuted by the data** and are documented as such, because a fix that doesn't work is as informative as one that does:
 

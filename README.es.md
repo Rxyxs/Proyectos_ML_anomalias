@@ -5,7 +5,8 @@
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-223%20passing-brightgreen?logo=pytest&logoColor=white)
+![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/tests.yml/badge.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -21,8 +22,8 @@ Son siete módulos y unas 800 líneas de documentación. Según para qué vengas
 | **Entender qué se hizo, en 3 minutos** | El [resumen de hallazgos](#resumen-qué-se-aprendió) y el [mapa de módulos](#mapa-de-módulos) |
 | **Evaluar el criterio técnico** | [Errores de método encontrados y corregidos](#errores-de-método-encontrados-y-corregidos) — es la sección que más dice sobre cómo se trabajó |
 | **Ver los modelos y sus resultados** | El [benchmark del Módulo 3](#módulo-3-benchmark-de-familias-de-detección-no-supervisado) y la [tabla de los 16 detectores](#los-16-detectores-de-un-vistazo) |
-| **Ver si esto se puede desplegar** | El [Módulo 5](#módulo-5-del-ranking-a-la-operación--umbral-dinero-y-envejecimiento), que es donde el ranking se convierte en decisiones |
-| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 193 pruebas |
+| **Ver si esto se puede desplegar** | El [Módulo 5](#módulo-5-del-ranking-a-la-operación--umbral-dinero-y-envejecimiento), donde el ranking se convierte en decisiones, y el [Módulo 8](#módulo-8-del-modelo-al-servicio), que es lo que efectivamente se despliega |
+| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 223 pruebas |
 | **Correrlo** | [Instalación](#instalación) y [Uso](#uso) |
 
 Cada módulo responde una pregunta que el anterior dejó abierta. No están ordenados por complejidad del modelo sino por esa cadena: se empieza clasificando fraude conocido y se termina preguntando en qué gastar la capacidad de revisión de un equipo.
@@ -43,6 +44,8 @@ Seis módulos, 15 detectores a nivel de transacción, uno a nivel de cuenta y tr
 | Agregar métodos **no siempre agrega cobertura**: los dos detectores nuevos producen los primeros pares redundantes del repositorio (ρ hasta 0.99). | [Módulo 6](#agregar-detectores-no-es-lo-mismo-que-agregar-cobertura) |
 | **Cincuenta etiquetas bien gastadas valen más que mil al azar**: con prevalencia del 0,08%, muestrear al azar no encuentra un solo positivo hasta las 500. | [Módulo 7](#cincuenta-etiquetas-bien-gastadas-valen-más-que-mil-al-azar) |
 | Los detectores de **estructura aleatoria se diluyen** con features irrelevantes. Un mecanismo explica el desempeño flojo de LODA y de Half-Space Trees a la vez. | [Módulo 7](#por-qué-es-flojo-y-por-qué-eso-explica-también-a-loda) |
+| **La latencia de producción es 320x la del backtest.** Medir scoring por lotes y suponer que se traslada a transacciones sueltas subestima el costo por dos órdenes de magnitud. | [Módulo 8](#latencia-el-número-que-un-backtest-nunca-muestra) |
+| **Explicar una alerta por oclusión de a una columna no funciona** cuando las features son dependientes por construcción. Dos correcciones fallaron antes de dar con la buena. | [Módulo 8](#por-qué-se-disparó-esta-alerta-y-dos-intentos-fallidos) |
 
 Ocho errores de método aparecieron en el camino y quedaron documentados con su corrección en [una sección propia](#errores-de-método-encontrados-y-corregidos), junto con dos hipótesis propias que los datos refutaron.
 
@@ -57,10 +60,11 @@ Ocho errores de método aparecieron en el camino y quedaron documentados con su 
 | **5 — Operación** | ¿Dónde corto el score, cuánta plata salva y sigue funcionando el mes que viene? | `src/operations/run_operations.py` | [05](notebooks/05_umbral_costo_y_drift.ipynb) |
 | **6 — Garantías** | ¿Se puede *garantizar* la tasa de falsas alarmas en vez de estimarla? | `src/conformal/run_conformal.py` | [06](notebooks/06_metodos_nuevos_y_conformal.ipynb) |
 | **7 — Deriva y etiquetas** | ¿Cómo se adapta un detector solo, y qué hago cuando aparecen unas pocas etiquetas? | `src/adaptive/run_adaptive.py` | [07](notebooks/07_deriva_y_etiquetas.ipynb) |
+| **8 — Servicio** | ¿Cómo se puntúa una transacción nueva, cuánto tarda y por qué se disparó la alerta? | `src/serving/run_serving.py` | [08](notebooks/08_del_modelo_al_servicio.ipynb) |
 
 ## Nota honesta sobre validación
 
-Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 y `python -m src.adaptive.run_adaptive` para el Módulo 7, más **193/193 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 `python -m src.adaptive.run_adaptive` para el Módulo 7 y `python -m src.serving.run_serving` para el Módulo 8, más **223/223 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
 
 Dos advertencias necesarias para leer bien las métricas:
 
@@ -107,6 +111,8 @@ flowchart LR
     M --> H
     C --> N["run_conformal.py<br/>p-valores conformes, cobertura garantizada"]
     C --> O["run_adaptive.py<br/>streaming, apilado y aprendizaje activo"]
+    C --> P["run_serving.py<br/>paquete de scoring + explicación"]
+    P --> Q[(detector_package.joblib<br/>detector + escalador + calibración)]
 ```
 
 El proyecto sigue una arquitectura modular que separa claramente la ingesta de datos, el preprocesamiento, la ingeniería de características y el modelado, favoreciendo la reproducibilidad y la testabilidad del código:
@@ -123,7 +129,8 @@ bank-anomaly-detection/
 │   ├── 04_modelos_profundos_y_secuencias.ipynb # Módulo 4: VAE, Deep SVDD y detector secuencial
 │   ├── 05_umbral_costo_y_drift.ipynb           # Módulo 5: umbral, dinero y validación temporal
 │   ├── 06_metodos_nuevos_y_conformal.ipynb     # Módulo 6: LODA, FastABOD y detección conforme
-│   └── 07_deriva_y_etiquetas.ipynb             # Módulo 7: streaming, apilado y activo
+│   ├── 07_deriva_y_etiquetas.ipynb             # Módulo 7: streaming, apilado y activo
+│   └── 08_del_modelo_al_servicio.ipynb         # Módulo 8: paquete de scoring y alertas
 ├── src/
 │   ├── data/
 │   │   ├── loader.py           # Descarga (kagglehub) y carga del dataset PaySim
@@ -161,11 +168,17 @@ bank-anomaly-detection/
 │   │   ├── stacking.py          # Scores de los 16 detectores como features
 │   │   ├── active.py            # Estrategias de selección para revisar
 │   │   └── run_adaptive.py      # Los tres experimentos del módulo 7
+│   ├── serving/                 # Módulo 8: del modelo entrenado al servicio
+│   │   ├── package.py           # DetectorPackage: todo lo que viaja junto
+│   │   ├── explain.py           # Oclusión por grupos de columnas dependientes
+│   │   ├── predict.py           # API de scoring: score, p-valor, alerta, motivo
+│   │   └── run_serving.py       # Construcción del paquete, latencia y carga
 │   └── utils/                  # Funciones auxiliares compartidas
 ├── tests/                 # Pruebas unitarias (pytest): preprocessing, features, baseline
 │                           # MAD, autoencoder, metrics store, familias, ensembles,
 │                           # modelos profundos, secuencias, umbrales, costos, temporal,
-│                           # detección conforme, streaming, apilado, activo
+│                           # detección conforme, streaming, apilado, activo,
+│                           # paquete de scoring y explicación de alertas
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
@@ -296,6 +309,14 @@ python -m src.adaptive.run_adaptive
 ```
 
 Compara Half-Space Trees con ventana fija contra ventana refrescada cada día, mide cuánto aportan los scores de los 16 detectores como features de un clasificador según el presupuesto de etiquetado, y simula el circuito de revisión con cinco estrategias de selección.
+
+Del modelo al servicio (Módulo 8):
+
+```bash
+python -m src.serving.run_serving
+```
+
+Construye el paquete de scoring desplegable —detector, escalador, calibración, umbral, contrato de columnas, fondo y grupos— lo serializa, verifica que al recargarlo reproduzca los mismos scores, y mide latencia por transacción suelta contra la amortizada por lote, la carga de alertas por día y en qué grupos de columnas se apoyan las alertas.
 
 
 ## Módulo 1: El techo supervisado — qué se consigue teniendo todas las etiquetas
@@ -860,6 +881,106 @@ Con la variable aislada, la conclusión se da vuelta:
 
 Sin la estrategia de control habría publicado "explorar le gana a explotar", que es falso.
 
+## Módulo 8: Del modelo al servicio
+
+Los siete módulos anteriores entrenan y evalúan dieciséis detectores. Ninguno deja algo con lo que puntuar una transacción nueva.
+
+Es un hueco que contradice el hilo de los Módulos 5 a 7: se calcularon umbrales, se midió cuánta plata salva cada punto de operación y se discutió recalibración, sin que existiera un objeto capaz de recibir una transacción y responder. Este módulo construye ese objeto y mide qué cuesta usarlo.
+
+```bash
+python -m src.serving.run_serving
+```
+
+### Qué tiene que viajar junto
+
+Un modelo serializado no alcanza. Para decidir sobre una transacción —y poder explicar la decisión— hacen falta seis cosas, y si alguna viaja por separado el sistema se rompe en silencio:
+
+| Componente | Por qué no puede faltar |
+|---|---|
+| **Detector ajustado** | El modelo propiamente dicho |
+| **Escalador** | Ajustado *solo* con entrenamiento. Reajustarlo sobre el tráfico del día cambiaría la escala bajo los pies del detector |
+| **Scores de calibración** | Convierten un score crudo en p-valor conforme (Módulo 6). Sin ellos el score es un número sin unidades |
+| **Nivel α** | La tasa de falsas alarmas que el sistema promete |
+| **Contrato de columnas** | Nombre y orden de las features |
+| **Fondo y grupos dependientes** | Para explicar la alerta. Una explicación calculada contra otro fondo no es la misma explicación |
+
+El contrato de columnas es el más traicionero de los seis. Un `DataFrame` con las mismas columnas **en otro orden** produce scores perfectamente plausibles y completamente equivocados, sin lanzar ninguna excepción. `DetectorPackage` reordena por nombre y rechaza columnas faltantes o sobrantes; hay tres pruebas dedicadas solo a eso.
+
+### Por qué se empaqueta Gaussian Mixture y no el mejor por PR-AUC
+
+Sobre el split temporal Deep SVDD gana el ranking (0.368 contra 0.263). Pero el Módulo 5 mostró que su umbral promete 0,1% de falsas alarmas y entrega **35%**: es indesplegable tal cual está.
+
+GMM queda segundo en ranking y primero en lo que importa para operar — calibración (razón 1,4 contra 354) y dinero salvado (944 M contra 833 M). **Elegir el modelo por su puesto en el ranking y dar el umbral por sentado es exactamente el error que el Módulo 5 hace visible**, y este módulo es donde esa lección se paga.
+
+### Latencia: el número que un backtest nunca muestra
+
+El Módulo 3 cronometró el scoring por lotes de 58.213 filas. Es la métrica correcta para un backtest y la equivocada para producción: ahí las transacciones llegan **de a una**, y el costo fijo por llamada domina sobre el costo marginal por fila.
+
+| Modo | ms por transacción |
+|---|---|
+| De a una (en línea) | **15,05** |
+| En lote (backtest) | 0,047 |
+| De a una, explicada | 355,92 |
+
+**320x de diferencia** entre el número del backtest y el de producción. Reportar 0,047 ms y suponer que se traslada al caso en línea subestima el costo real por dos órdenes de magnitud.
+
+La tercera fila es el costo de entregar una alerta *accionable*. Explicar cuesta una pasada de scoring por grupo y por fila de fondo —tres grupos por cincuenta filas, ciento cincuenta llamadas— y por eso solo se explica lo que se va a revisar, que es justamente la cola acotada del Módulo 5.
+
+### Cuántas alertas genera por día
+
+El paquete promete α = 1%. Sobre el tráfico real del período tardío eso se traduce en una carga concreta, y en una confirmación más de la deriva:
+
+| | |
+|---|---|
+| Mediana de alertas por día | **153** |
+| Tasa media observada | **2,77%** (prometida: 1,00%) |
+| Tasa el día 0 → día 16 | 1,57% → **11,10%** |
+| Fraude capturado | 381 de 684 (**55,7%**) |
+
+La tasa se despega del 1% prometido y llega al 11% para el día 16. Es el mismo fenómeno que los Módulos 5 y 6 midieron con umbrales y p-valores, ahora expresado en la unidad que le importa a un equipo: **la carga de trabajo se multiplica por siete en diecisiete días** sin que nadie toque el modelo.
+
+### Por qué se disparó esta alerta, y dos intentos fallidos
+
+Un analista que recibe una transacción marcada necesita saber qué la marcó. De los dieciséis detectores solo LODA trae atribución propia (Módulo 6), así que hace falta un método agnóstico: oclusión — reemplazar una feature por valores típicos y medir cuánto cae el score.
+
+La versión ingenua **no funciona sobre PaySim**, y encontrarlo costó dos intentos medidos:
+
+1. **Ocluir contra la mediana del entrenamiento** dio aportes de **-397.000** para las columnas que más pesan. Un número negativo enorme significa "quitar esta columna vuelve la transacción mucho más rara", que no explica nada.
+2. **Promediar sobre un fondo de cincuenta filas normales** —la corrección estándar, la que hace SHAP al integrar sobre una distribución de referencia— tampoco lo arregló: los negativos crecieron a **-909.000**.
+
+La causa no era contra qué se sustituye sino **que se sustituye de a una columna**. Las features de PaySim son linealmente dependientes por construcción: `errorBalanceOrig` es exactamente `newbalanceOrig + amount - oldbalanceOrg`, y las cinco dummies de `type_*` suman 1. Mover una sola produce saldos que no cierran o una transacción sin tipo, y un modelo de densidad manda ese punto imposible a una región de probabilidad casi nula.
+
+La solución es ocluir por **grupos** de columnas dependientes. `infer_dependency_groups` los deriva de los nombres y sobre PaySim da tres: monetario (9 columnas, juntas porque `amount` enlaza origen con destino), tipo de transacción (5 dummies) y `step`. Con eso la explicación pasa a ser legible:
+
+```
+amount+8 más (+11464.10), step (+15.68), type_CASH_IN+4 más (-1791.54)
+```
+
+El patrón monetario aporta +11.464 —reemplazarlo por uno normal derrumba la anomalía—, mientras que el tipo de transacción la reduce. Las cinco alertas más anómalas del período son fraude real, y las cinco se explican igual.
+
+### En qué se apoyan las alertas
+
+Promediando sobre las 500 alertas más anómalas:
+
+| Grupo | Columnas | Aporte medio | Aporte absoluto medio |
+|---|---|---|---|
+| `type_*` | 5 | -1481,86 | 1635,64 |
+| monetario | 9 | **+630,52** | 1295,83 |
+| `step` | 1 | +3,17 | 4,20 |
+
+Se calcula sobre las alertas **más anómalas** y no sobre tráfico al azar por una razón que también costó una corrida descubrir: sustituir un patrón normal por otro normal produce un híbrido menos típico, así que sobre transacciones corrientes el aporte sale negativo y no dice nada sobre qué dispara las alertas.
+
+Dos límites del método que quedan en pie, y que conviene tener presentes al leer la columna `motivo`:
+
+- **Mide contribución marginal, no causalidad**, igual que cualquier método de permutación.
+- **La atribución es por grupo, no por columna.** Las nueve columnas monetarias se movieron juntas; repartir el efecto entre ellas sería inventar una precisión que la estructura de los datos no permite. "La alerta la disparó el patrón de saldos" es una explicación honesta; "la disparó `newbalanceOrig`" no lo sería.
+
+### Integración continua
+
+El repositorio nunca había tenido CI. `.github/workflows/tests.yml` corre las 223 pruebas en cada push sobre **Python 3.10 y 3.12**, con la rueda de CPU de PyTorch. Las pruebas usan datos sintéticos y no descargan PaySim, que es lo que las vuelve viables en un runner.
+
+La matriz de dos versiones no es decorativa: durante el desarrollo de este módulo el entorno pasó de Python 3.10 con pandas 2.x a Python 3.12 con **pandas 3.0.5, numpy 2.5.2 y scikit-learn 1.9.0**, y 152 de las pruebas de entonces pasaron sin un solo cambio de código. Vale la pena que eso quede verificado en cada commit y no por accidente.
+
 ## Los 16 detectores de un vistazo
 
 Todos entrenados solo con transacciones normales, todos con la convención `fit` / `score_samples` de scikit-learn (más bajo = más anómalo), todos comparables entre sí sobre el mismo split del Módulo 3.
@@ -947,7 +1068,8 @@ python -m src.deep.train_deep                # Módulo 4
 python -m src.operations.run_operations      # Módulo 5
 python -m src.conformal.run_conformal        # Módulo 6
 python -m src.adaptive.run_adaptive          # Módulo 7
-pytest tests/                                # 193 pruebas, sin descargar nada
+python -m src.serving.run_serving            # Módulo 8
+pytest tests/                                # 223 pruebas, sin descargar nada
 ```
 
 Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), que es lo que domina el tiempo de arranque; el ajuste y el scoring de los detectores están cronometrados por separado en la tabla del Módulo 3. Las pruebas unitarias corren en segundos porque usan datos sintéticos y no tocan el dataset.
@@ -975,6 +1097,8 @@ Esta sección existe porque los errores de medición **se parecen mucho a los bu
 | Aprendizaje activo con dos variables confundidas | "Explorar le gana a explotar", y encuentra el doble de fraude | La cola estática y la que aprende no eran comparables | Estrategia de control `top_model`; la conclusión se invirtió |
 | Tolerancia de un test fijada a ojo | Fallaba con α=0.001 sin que el código estuviera mal | El error binomial a n=50.000 es ±0.00014 | Tolerancia derivada del ruido de muestreo |
 | Generador de datos que movía dos cosas a la vez | Un test de dilución que no reproducía el efecto medido | El ruido consumía el generador y desplazaba también la señal | Generadores separados para señal y ruido |
+| Explicación por oclusión de a una columna | Aportes de **-397.000** para las columnas que más pesan | Las features son dependientes por construcción; ocluir una sola produce un punto imposible | Oclusión por grupos de columnas dependientes |
+| Atribución global sobre tráfico al azar | Aportes negativos que no explicaban ninguna alerta | Sustituir un patrón normal por otro da un híbrido menos típico | Calcularla sobre las alertas más anómalas |
 
 Dos hipótesis propias quedaron **refutadas por los datos** y se documentan como tales, porque un arreglo que no funciona informa tanto como uno que sí:
 

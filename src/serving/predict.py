@@ -49,7 +49,8 @@ def score_transactions(package: DetectorPackage, X, top_k: int = 3,
 
     motivos = explain_rows(
         package.score_from_scaled,
-        X_scaled, _baseline_from_package(package), package.feature_names, top_k=top_k,
+        X_scaled, _baseline_from_package(package), package.feature_names,
+        top_k=top_k, groups=package.groups,
     )
     salida["motivo"] = [
         ", ".join(f"{nombre} ({aporte:+.2f})" for nombre, aporte in fila) for fila in motivos
@@ -58,16 +59,19 @@ def score_transactions(package: DetectorPackage, X, top_k: int = 3,
 
 
 def _baseline_from_package(package: DetectorPackage) -> np.ndarray:
-    """Vector de valores típicos en el espacio escalado.
+    """Fondo contra el que se explica una alerta.
 
-    `RobustScaler` centra en la mediana del entrenamiento, así que la mediana escalada es el
-    vector cero. Se calcula a partir del escalador en vez de hardcodear ceros para que el
-    módulo siga siendo correcto si alguien cambia el escalador por otro.
+    Se prefiere el fondo del paquete: promediar la oclusión sobre varias filas normales reales
+    mantiene combinaciones de valores que efectivamente ocurren. Reemplazar por un único punto
+    típico rompe las correlaciones entre columnas y, con un modelo de densidad, produce
+    atribuciones enormes y engañosas.
+
+    Si el paquete no trae fondo —por ejemplo, uno serializado antes de que existiera— se cae
+    al vector cero, que con `RobustScaler` es la mediana del entrenamiento.
     """
-    centro = getattr(package.scaler, "center_", None)
-    if centro is None:
-        return np.zeros(len(package.feature_names))
-    return package.scaler.transform(np.asarray(centro).reshape(1, -1)).ravel()
+    if package.background is not None and len(package.background):
+        return np.asarray(package.background, dtype=float)
+    return np.zeros(len(package.feature_names))
 
 
 def top_alerts(package: DetectorPackage, X, n: int = 10) -> pd.DataFrame:

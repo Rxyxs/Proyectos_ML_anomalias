@@ -63,15 +63,19 @@ def medir_latencia(package: DetectorPackage, X: pd.DataFrame, n: int = N_LATENCI
     package.score(muestra)
     por_lote = (time.perf_counter() - inicio) / n
 
-    # Con explicación, que es lo que cuesta una alerta accionable.
+    # Una alerta explicada, también de a una: es lo que cuesta entregarle a un analista algo
+    # accionable. Medirla sobre un lote la abarataría artificialmente y no sería comparable
+    # con la primera fila.
+    n_explicadas = 20
     inicio = time.perf_counter()
-    score_transactions(package, muestra.iloc[:20], explain=True)
-    con_explicacion = (time.perf_counter() - inicio) / 20
+    for i in range(n_explicadas):
+        score_transactions(package, muestra.iloc[[i]], explain=True)
+    con_explicacion = (time.perf_counter() - inicio) / n_explicadas
 
     return pd.DataFrame([
         {"modo": "de a una (en línea)", "ms_por_transaccion": por_transaccion * 1_000},
         {"modo": "en lote (backtest)", "ms_por_transaccion": por_lote * 1_000},
-        {"modo": "con explicación", "ms_por_transaccion": con_explicacion * 1_000},
+        {"modo": "de a una, explicada", "ms_por_transaccion": con_explicacion * 1_000},
     ])
 
 
@@ -141,18 +145,29 @@ if __name__ == "__main__":
     # --- 3. alertas explicadas ---
     print(f"\n=== Las {N_ALERTAS_MOSTRADAS} alertas más anómalas, explicadas ===")
     p_valores = recargado.p_values(X_test)
-    top = X_test.iloc[np.argsort(p_valores)[:N_ALERTAS_MOSTRADAS]]
-    explicadas = score_transactions(recargado, top, top_k=3)
-    explicadas["es_fraude"] = np.asarray(y_test)[np.argsort(p_valores)[:N_ALERTAS_MOSTRADAS]]
+    mas_anomalas = np.argsort(p_valores)[:N_ALERTAS_MOSTRADAS]
+
+    explicadas = score_transactions(recargado, X_test.iloc[mas_anomalas], top_k=3)
+    # La asignación es posicional y las posiciones coinciden porque ambas se construyeron
+    # con el mismo orden de `mas_anomalas`.
+    explicadas["es_fraude"] = np.asarray(y_test)[mas_anomalas]
     print(explicadas.to_string(float_format=lambda v: f"{v:.4g}"))
 
     # --- 4. en qué se apoya el detector ---
-    print("\n=== En qué se apoya el detector (atribución global) ===")
-    centro = recargado.scaler.transform(np.asarray(recargado.scaler.center_).reshape(1, -1)).ravel()
+    # Se calcula sobre las alertas y no sobre tráfico al azar: sustituir un patrón normal por
+    # otro normal produce un híbrido menos típico y da aportes negativos que no dicen nada
+    # sobre qué dispara las alertas.
+    print("\n=== En qué se apoyan las alertas (atribución por grupo) ===")
+    # Las 500 MÁS anómalas, no las primeras 500 en orden de índice: una alerta al límite del
+    # umbral no tiene un grupo que la explique, y promediarlas con las extremas enmascara a
+    # estas últimas, que son las que un analista revisa primero.
+    alertadas = np.argsort(p_valores)[:500]
     importancia = global_importance(
         recargado.score_from_scaled,
-        recargado.scaler.transform(X_test.iloc[:2_000]),
-        centro,
+        recargado.to_scaled_matrix(X_test.iloc[alertadas]),
+        recargado.background,
         recargado.feature_names,
+        groups=recargado.groups,
     )
-    print(importancia.head(8).to_string(index=False, float_format=lambda v: f"{v:.4f}"))
+    print(f"(sobre las {len(alertadas)} alertas mas anomalas)")
+    print(importancia.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
