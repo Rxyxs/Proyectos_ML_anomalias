@@ -18,3 +18,9 @@
 *.gif binary
 *.ico binary
 *.pdf binary
+
+# This project is Python with a small Go component, but its many notebooks
+# are large JSON files full of code cells; without this, GitHub's linguist
+# counts their bytes as "Jupyter Notebook" and mislabels the whole repo's
+# primary language.
+*.ipynb linguist-vendored
