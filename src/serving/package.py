@@ -37,7 +37,7 @@ import pandas as pd
 
 from src.conformal.conformal import conformal_p_values, conformal_threshold
 from src.serving.explain import infer_dependency_groups
-from src.unsupervised.models import anomaly_score
+from src.unsupervised.models import anomaly_score, assert_finite
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PACKAGE_PATH = PROJECT_ROOT / "data" / "processed" / "detector_package.joblib"
@@ -97,6 +97,12 @@ class DetectorPackage:
             # Caso simétrico al anterior: el escalador espera nombres y le llega un arreglo.
             if hasattr(self.scaler, "feature_names_in_"):
                 X = pd.DataFrame(X, columns=self.feature_names)
+        # Rechaza NaN/Inf/no-numérico ANTES del escalador, con un error propio y
+        # claro -- no porque RobustScaler.transform no fuera a fallar solo (sí lo
+        # hace, por defecto), sino porque eso era un efecto colateral de scikit-learn,
+        # no una garantía explícita del paquete, y no cubre score_from_scaled() más
+        # abajo, que se salta el escalador a propósito (ver su docstring).
+        assert_finite(X, "la transacción")
         return self.scaler.transform(X)
 
     # ------------------------------------------------------------------ scoring
@@ -110,8 +116,9 @@ class DetectorPackage:
 
         La explicación por oclusión modifica los datos en el espacio escalado y vuelve a
         puntuar muchas veces; escalar de nuevo en cada pasada sería incorrecto además de caro.
+        Este camino no pasa por `to_scaled_matrix`, así que valida NaN/Inf por su cuenta.
         """
-        return anomaly_score(self.detector, np.asarray(X_scaled, dtype=float))
+        return anomaly_score(self.detector, assert_finite(X_scaled, "la matriz ya escalada"))
 
     def p_values(self, X) -> np.ndarray:
         """P-valor conforme por transacción. Más bajo = más anómalo.

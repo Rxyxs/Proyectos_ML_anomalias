@@ -34,6 +34,8 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import make_pipeline
 
+from src.unsupervised.models import assert_finite
+
 EPS = 1e-12
 
 
@@ -187,7 +189,7 @@ class HBOS:
         return self
 
     def score_samples(self, X) -> np.ndarray:
-        X = np.asarray(X, dtype=float)
+        X = assert_finite(X, "la entrada a HBOS.score_samples")
         total = np.zeros(X.shape[0])
 
         for j, column in enumerate(X.T):
@@ -246,7 +248,7 @@ class ECOD:
         return left, right
 
     def score_samples(self, X) -> np.ndarray:
-        X = np.asarray(X, dtype=float)
+        X = assert_finite(X, "la entrada a ECOD.score_samples")
         left, right = self._tail_probabilities(X)
 
         outlier_left = -np.log(left).sum(axis=1)
@@ -356,7 +358,7 @@ class LODA:
         return scores
 
     def score_samples(self, X) -> np.ndarray:
-        X = np.asarray(X, dtype=float)
+        X = assert_finite(X, "la entrada a LODA.score_samples")
         return -self._per_projection_scores(X).mean(axis=1)
 
     def feature_importance(self, X) -> np.ndarray:

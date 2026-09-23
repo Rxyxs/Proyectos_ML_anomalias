@@ -32,6 +32,26 @@ def build_lof(contamination: float = DEFAULT_CONTAMINATION, n_neighbors: int = 2
     )
 
 
+def assert_finite(X, contexto: str = "la entrada") -> np.ndarray:
+    """Rechaza NaN/Inf y valores no numéricos antes de puntuar, devolviendo el
+    arreglo ya convertido a float si pasa el chequeo.
+
+    Día 15 encontró que IsolationForest, HBOS, ECOD, LODA y MADBaseline no fallan
+    solos ante un NaN o un Inf en la entrada -- devuelven un score sin sentido en
+    silencio en vez de avisar (los demás detectores, apoyados en scikit-learn puro
+    -- GMM, kNN, MCD, Nystroem, PCA --, ya rechazan por su cuenta). Este chequeo
+    explícito cierra ese hueco en los modelos hechos a mano y, llamado además desde
+    la capa de serving, protege también a IsolationForest sin poder tocar su código.
+    """
+    try:
+        valores = np.asarray(X, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{contexto} contiene valores no numéricos: {exc}") from None
+    if not np.isfinite(valores).all():
+        raise ValueError(f"{contexto} contiene NaN o valores infinitos.")
+    return valores
+
+
 def anomaly_score(model, X) -> np.ndarray:
     """Anomaly score continuo y homogéneo entre modelos: valores más altos = más anómalo.
 
@@ -66,7 +86,7 @@ class MADBaseline:
 
     def score_samples(self, X) -> np.ndarray:
         """Devuelve -score (convención sklearn: más bajo = más anómalo) para reusar `anomaly_score`."""
-        X = np.asarray(X, dtype=float)
+        X = assert_finite(X, "la entrada a MADBaseline.score_samples")
         z = np.abs(X - self.median_) / self.mad_
         max_abs_z = z.max(axis=1)
         return -max_abs_z

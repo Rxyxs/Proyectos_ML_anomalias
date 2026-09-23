@@ -1,4 +1,4 @@
-"""Contrato común de los modelos de detección de anomalías (Día 15).
+"""Contrato común de los modelos de detección de anomalías (Día 15, endurecido Día 16).
 
 Tres propiedades que todo detector del repositorio (los de src.unsupervised.models
 y los de src.unsupervised.families) debería cumplir para ser seguro de enchufar en
@@ -10,18 +10,24 @@ src.serving.predict, verificadas explícitamente en vez de asumidas:
    produce IsolationForest.predict() se mantiene cerca del contamination con el que
    se ajustó -- no se dispara ni colapsa a cero solo porque el set de prueba está
    desbalanceado.
-3. Ante NaN/Inf en la entrada, el comportamiento real HOY se documenta tal cual es,
-   no como debería ser: unos detectores fallan rápido (ValueError, seguro), otros
-   devuelven un score no finito o silenciosamente "razonable" sin avisar (riesgo real
-   para producción, ver el resumen del Día 15). Estos tests fijan el comportamiento
-   actual para que un cambio futuro en cualquiera de los dos grupos se note como un
-   test roto, no como una sorpresa en producción.
+3. Ante NaN/Inf en la entrada, TODOS los detectores rechazan con ValueError. El Día
+   15 encontró que HBOS, ECOD, LODA y MADBaseline no fallaban solos -- devolvían un
+   score no finito o silenciosamente "razonable" sin avisar. El Día 16 les agregó
+   assert_finite() (src.unsupervised.models) a los cuatro. El único que sigue sin
+   poder validarse a sí mismo es IsolationForest (es código de scikit-learn, no
+   propio); por eso se prueba tanto que llamado directo sigue sin validar como que,
+   a través de DetectorPackage -- el único camino real hacia producción -- sí rechaza,
+   porque la validación vive ahí, no en cada detector.
 """
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
+from sklearn.preprocessing import RobustScaler
 
+from src.serving.package import build_package
+from src.serving.predict import score_transactions
 from src.unsupervised.families import build_detectors
 from src.unsupervised.models import (
     MADBaseline,
@@ -144,70 +150,73 @@ def _con_nan_e_inf(X: np.ndarray) -> np.ndarray:
     return X_bad
 
 
-# Fallan rapido y claro (ValueError) -- el comportamiento seguro. Confirmado
-# empiricamente para el Día 15; si scikit-learn cambia esto, el test lo marca.
-_RECHAZAN_NAN = [
-    "gmm_density", "knn_distance", "robust_mahalanobis",
-    "ocsvm_nystroem", "abod", "pca_reconstruction",
+# Los 9 detectores de families.py: 6 ya rechazaban por apoyarse en scikit-learn
+# (GMM, kNN, MCD, Nystroem, PCA), y desde el Día 16 los 3 hechos a mano (HBOS,
+# ECOD, LODA) tambien -- vía assert_finite() en su propio score_samples.
+_TODOS_LOS_DETECTORES_DE_FAMILIES = [
+    "gmm_density", "knn_distance", "robust_mahalanobis", "ocsvm_nystroem", "abod",
+    "pca_reconstruction", "hbos", "ecod", "loda",
 ]
 
-# NO fallan: devuelven un score sin avisar (algunos no-finito, otros con pinta de
-# valido). Riesgo real si algo antes de score_transactions() deja pasar NaN/Inf --
-# ver el resumen del Día 15. Fijado aca para que arreglarlo en el futuro se note.
-_ACEPTAN_NAN_SIN_AVISAR = ["hbos", "ecod", "loda"]
 
-
-def test_detectores_de_families_que_deberian_rechazar_nan(normal_data):
+def test_los_nueve_detectores_de_families_rechazan_nan_e_inf(normal_data):
     detectores = build_detectors()
-    faltantes = set(_RECHAZAN_NAN) - set(detectores)
-    assert not faltantes, f"nombres de detector desactualizados: {faltantes}"
+    assert set(detectores) == set(_TODOS_LOS_DETECTORES_DE_FAMILIES)
 
     X_bad = _con_nan_e_inf(normal_data)
-    for nombre in _RECHAZAN_NAN:
+    for nombre in _TODOS_LOS_DETECTORES_DE_FAMILIES:
         detector = detectores[nombre].fit(normal_data)
         with pytest.raises(ValueError):
             anomaly_score(detector, X_bad)
 
 
-def test_detectores_de_families_que_hoy_no_rechazan_nan_documentado(normal_data):
-    detectores = build_detectors()
-    faltantes = set(_ACEPTAN_NAN_SIN_AVISAR) - set(detectores)
-    assert not faltantes, f"nombres de detector desactualizados: {faltantes}"
-
+def test_mad_baseline_rechaza_nan_e_inf(normal_data):
+    """Antes del Día 16, el baseline hecho a mano propagaba NaN/Inf en silencio --
+    era el gap mas claro del audit del Día 15, porque es el unico detector sin
+    ninguna dependencia de scikit-learn que le regale la validacion gratis. Ahora
+    score_samples llama assert_finite() igual que HBOS/ECOD/LODA."""
+    detector = MADBaseline().fit(normal_data)
     X_bad = _con_nan_e_inf(normal_data)
-    for nombre in _ACEPTAN_NAN_SIN_AVISAR:
-        detector = detectores[nombre].fit(normal_data)
-        # No debe explotar -- eso es justamente el problema: ni explota ni avisa.
-        scores = anomaly_score(detector, X_bad)
-        assert scores.shape == (3,), nombre
+    with pytest.raises(ValueError, match="NaN o valores infinitos"):
+        detector.score_samples(X_bad)
 
 
-def test_isolation_forest_no_rechaza_nan_hoy(normal_data):
-    """IsolationForest acepta NaN/Inf sin lanzar y sin marcar la fila como invalida
-    -- documentado, no corregido (restriccion del Día 15: sin reescrituras hoy)."""
-    detector = build_isolation_forest().fit(normal_data)
-    X_bad = _con_nan_e_inf(normal_data)
-    scores = anomaly_score(detector, X_bad)
-    assert scores.shape == (3,)
-
-
-def test_lof_si_rechaza_nan(normal_data):
+def test_lof_rechaza_nan(normal_data):
     detector = build_lof().fit(normal_data)
     X_bad = _con_nan_e_inf(normal_data)
     with pytest.raises(ValueError):
         anomaly_score(detector, X_bad)
 
 
-def test_mad_baseline_propaga_nan_e_inf_sin_avisar(normal_data):
-    """El baseline hecho a mano no valida su entrada: un NaN se propaga a NaN, un
-    Inf se propaga a Inf, sin excepcion -- el gap mas claro del audit del Día 15,
-    porque es el unico detector sin ninguna dependencia de scikit-learn que le
-    regale la validacion gratis."""
-    detector = MADBaseline().fit(normal_data)
+def test_isolation_forest_llamado_directo_sigue_sin_validar(normal_data):
+    """IsolationForest es de scikit-learn: no se puede tocar su código para que
+    valide. Documenta el limite exacto de lo que el Día 16 puede arreglar por su
+    cuenta -- la próxima prueba confirma que la capa de serving, que sí es código
+    propio, lo cubre igual."""
+    detector = build_isolation_forest().fit(normal_data)
     X_bad = _con_nan_e_inf(normal_data)
-    scores = detector.score_samples(X_bad)
-
+    scores = anomaly_score(detector, X_bad)
     assert scores.shape == (3,)
-    assert np.isnan(scores[0])
-    assert np.isinf(scores[1])
-    assert np.isinf(scores[2])
+
+
+def test_isolation_forest_a_traves_del_paquete_de_serving_si_rechaza_nan(normal_data):
+    """El mismo IsolationForest que no valida solo, sí rechaza NaN/Inf cuando se
+    puntúa a través de DetectorPackage -- src.serving.package.to_scaled_matrix
+    llama assert_finite() antes de entregarle nada al detector, así que no importa
+    cuál de los detectores del repositorio esté empaquetado."""
+    scaler = RobustScaler().fit(normal_data)
+    detector = build_isolation_forest().fit(scaler.transform(normal_data))
+    calibracion = scaler.transform(normal_data)
+    columnas = [f"f{i}" for i in range(normal_data.shape[1])]
+
+    package = build_package(
+        detector, scaler, calibracion, columnas,
+        detector_name="isolation_forest",
+    )
+
+    X_bad = pd.DataFrame(_con_nan_e_inf(normal_data), columns=columnas)
+    with pytest.raises(ValueError, match="NaN o valores infinitos"):
+        package.score(X_bad)
+
+    with pytest.raises(ValueError, match="NaN o valores infinitos"):
+        score_transactions(package, X_bad, explain=False)
