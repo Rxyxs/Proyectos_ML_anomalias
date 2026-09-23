@@ -2,11 +2,12 @@
 
 # Bank Anomaly Detection
 
-![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
+[![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/ci.yml/badge.svg)](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.12-3776AB?logo=python&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectores-F7931E?logo=scikitlearn&logoColor=white)
 ![XGBoost](https://img.shields.io/badge/XGBoost-supervised-EB5E28)
-![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen?logo=pytest&logoColor=white)
-![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/tests.yml/badge.svg)
+![Tests](https://img.shields.io/badge/tests-266%20passing-brightgreen?logo=pytest&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Autoencoder-EE4C2C?logo=pytorch&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-metrics%20store-FFF000?logo=duckdb&logoColor=black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -23,7 +24,7 @@ Son siete módulos y unas 800 líneas de documentación. Según para qué vengas
 | **Evaluar el criterio técnico** | [Errores de método encontrados y corregidos](#errores-de-método-encontrados-y-corregidos) — es la sección que más dice sobre cómo se trabajó |
 | **Ver los modelos y sus resultados** | El [benchmark del Módulo 3](#módulo-3-benchmark-de-familias-de-detección-no-supervisado) y la [tabla de los 16 detectores](#los-16-detectores-de-un-vistazo) |
 | **Ver si esto se puede desplegar** | El [Módulo 5](#módulo-5-del-ranking-a-la-operación--umbral-dinero-y-envejecimiento), donde el ranking se convierte en decisiones, y el [Módulo 8](#módulo-8-del-modelo-al-servicio), que es lo que efectivamente se despliega |
-| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 247 pruebas |
+| **Revisar el código** | `src/unsupervised/families.py` para los detectores clásicos, `src/deep/` para los profundos, `tests/` para las 266 pruebas |
 | **Correrlo** | [Instalación](#instalación) y [Uso](#uso) |
 
 Cada módulo responde una pregunta que el anterior dejó abierta. No están ordenados por complejidad del modelo sino por esa cadena: se empieza clasificando fraude conocido y se termina preguntando en qué gastar la capacidad de revisión de un equipo.
@@ -66,7 +67,7 @@ Once errores de método aparecieron en el camino y quedaron documentados con su 
 
 ## Nota honesta sobre validación
 
-Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 `python -m src.adaptive.run_adaptive` para el Módulo 7, `python -m src.serving.run_serving` para el Módulo 8 y `python -m src.serving.run_recalibration` para el Módulo 9, más **247/247 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
+Los números de este README **provienen de una corrida real** del pipeline sobre el dataset PaySim completo (6.362.620 filas descargadas vía `kagglehub`), no de estimaciones: `python -m src.unsupervised.train_unsupervised` para el Módulo 2, `python -m src.unsupervised.benchmark` para el Módulo 3, `python -m src.deep.train_deep` para el Módulo 4, `python -m src.operations.run_operations` para el Módulo 5, `python -m src.conformal.run_conformal` para el Módulo 6 `python -m src.adaptive.run_adaptive` para el Módulo 7, `python -m src.serving.run_serving` para el Módulo 8 y `python -m src.serving.run_recalibration` para el Módulo 9, más **266/266 tests unitarios pasando** (`pytest tests/`, con datos sintéticos, sin necesitar la descarga). Los tiempos de ajuste y scoring se midieron en esa misma máquina (Windows 10, CPU) y sirven para comparar detectores *entre sí*, no como referencia absoluta de hardware.
 
 Dos advertencias necesarias para leer bien las métricas:
 
@@ -793,6 +794,8 @@ Bajo intercambiabilidad los p-valores de las transacciones legítimas son **unif
 
 Ninguno de los cuatro es perfectamente uniforme, así que hay deriva en todos. Lo que separa a Deep SVDD del resto no es la forma global sino la masa acumulada **cerca de cero**: su primer bin concentra una densidad de 24 contra la de 1 que tendría una uniforme, y esa cola izquierda es exactamente la que determina la tasa de falsas alarmas con α chico.
 
+**La implementación en sí se chequea a nivel unitario, no solo se observa en datos de producción.** `tests/test_conformal.py` corre un test de Kolmogorov-Smirnov contra Uniform(0,1) sobre la salida de `conformal_p_values()`: no rechaza uniformidad bajo intercambiabilidad (tráfico legítimo, calibración y prueba del mismo sorteo) y sí la rechaza -- de forma contundente, p < 1e-10 -- en cuanto los puntos de prueba son genuinamente anómalos. Eso separa dos afirmaciones distintas que es fácil confundir: "la fórmula está bien implementada" (un test unitario, verificable en milisegundos sobre datos sintéticos) contra "hay intercambiabilidad en estos datos de producción" (el hallazgo de Deep SVDD de arriba, que ningún test unitario puede establecer -- es una propiedad empírica del tráfico, no del código).
+
 ## Módulo 7: Deriva y etiquetas — los dos problemas que quedaron abiertos
 
 Los Módulos 5 y 6 llegaron a la misma conclusión por caminos independientes: **ningún umbral fijo aprendido del pasado sobrevive**. Ninguno propuso qué hacer al respecto.
@@ -992,7 +995,7 @@ Dos límites del método que quedan en pie, y que conviene tener presentes al le
 
 ### Integración continua
 
-El repositorio nunca había tenido CI. `.github/workflows/tests.yml` corre las 247 pruebas en cada push sobre **Python 3.10 y 3.12**, con la rueda de CPU de PyTorch. Las pruebas usan datos sintéticos y no descargan PaySim, que es lo que las vuelve viables en un runner.
+`.github/workflows/ci.yml` corre **5 jobs en cada push**: la suite de 266 tests en pytest sobre **Python 3.10 y 3.12** (con la rueda de CPU de PyTorch), un lint con `ruff` acotado a errores reales (sintaxis, nombres indefinidos) y -- ya que el repositorio sumó un segundo lenguaje -- `go build`/`go test` y una verificación de build de Docker para el streamer de volatilidad en Go (`go/`). Las pruebas de Python usan datos sintéticos y no descargan PaySim, que es lo que las vuelve viables en un runner.
 
 La matriz de dos versiones no es decorativa: durante el desarrollo de este módulo el entorno pasó de Python 3.10 con pandas 2.x a Python 3.12 con **pandas 3.0.5, numpy 2.5.2 y scikit-learn 1.9.0**, y 152 de las pruebas de entonces pasaron sin un solo cambio de código. Vale la pena que eso quede verificado en cada commit y no por accidente.
 
@@ -1175,7 +1178,7 @@ python -m src.conformal.run_conformal        # Módulo 6
 python -m src.adaptive.run_adaptive          # Módulo 7
 python -m src.serving.run_serving            # Módulo 8
 python -m src.serving.run_recalibration      # Módulo 9
-pytest tests/                                # 247 pruebas, sin descargar nada
+pytest tests/                                # 266 pruebas, sin descargar nada
 ```
 
 Cada módulo arranca cargando y limpiando las 6.362.620 filas del CSV (493 MB), que es lo que domina el tiempo de arranque; el ajuste y el scoring de los detectores están cronometrados por separado en la tabla del Módulo 3. Las pruebas unitarias corren en segundos porque usan datos sintéticos y no tocan el dataset.
@@ -1253,6 +1256,21 @@ Términos que aparecen a lo largo del documento, con el sentido preciso que tien
 | **Recall en monto** | Fracción del **dinero** defraudado que cae dentro de las alertas, en vez de la fracción de casos. Difiere del recall por conteo cuando los montos son muy dispares |
 | **Arranque en frío** | Situación en la que todavía no hay etiquetas ni modelo supervisado. Los detectores no supervisados son lo único disponible, y ordenan la primera cola de revisión del Módulo 7 |
 | **Perfil de masa** | En Half-Space Trees, la cuenta de cuántos puntos de la ventana caen en cada nodo. Es lo único que el detector aprende de los datos, y refrescarlo es toda la adaptación |
+
+## Checklist de producción
+
+Nota de cierre para esta ronda de trabajo de endurecimiento: lo que está realmente verificado a este commit, no lo que se aspira a tener. Cada fila enlaza a donde se chequea o se midió -- un check acá descansa en un comando, un test o una corrida real, no solo en esta tabla.
+
+| | Item | Evidencia |
+|---|---|---|
+| ✅ | CI automatizado (5/5 jobs en GitHub Actions: Py3.10, Py3.12, Docker, Go, Lint) | [Integración continua](#integración-continua); `.github/workflows/ci.yml` |
+| ✅ | 266 tests unitarios y de contrato pasando | `pytest tests/ -v` -- `tests/test_anomaly_model_contract.py` (contratos de modelo: forma, desbalance, NaN/Inf), `tests/test_conformal.py` (18 tests, incluido el chequeo de uniformidad KS de abajo), `tests/test_benchmark_metrics.py` (ranking PR-AUC vs. ROC-AUC) |
+| ✅ | Input Validation estricto (NaN/Inf rechazados en la frontera de serving y en detectores custom) | `src/unsupervised/models.py::assert_finite`, conectado a `MADBaseline`, `HBOS`, `ECOD`, `LODA`, y -- dado que `IsolationForest` es código propio de scikit-learn y no se puede parchar directamente -- a `DetectorPackage.to_scaled_matrix`/`score_from_scaled`, el único punto de paso obligado de toda llamada de serving |
+| ✅ | Sin fuga de datos train/test (`RobustScaler` ajustado exclusivamente en train/inliers) | Auditado en cada `fit`/`fit_transform` de `src/` (no `StandardScaler` -- este repositorio usa `RobustScaler` en todos lados, a propósito, por su insensibilidad a las colas pesadas de los montos de transacción) |
+| ✅ | Conformal Prediction para control probabilístico de falsos positivos | [Módulo 6](#módulo-6-métodos-nuevos-y-garantías-de-cobertura): p-valores verificados uniformes en [0,1] bajo intercambiabilidad y concentrados cerca de 0 bajo anomalías, con un test de Kolmogorov-Smirnov sobre la implementación misma, además de los números reales de cobertura que ya trae esa sección |
+| ✅ | Soporte multi-lenguaje (streamer de volatilidad en Go, verificado independientemente) | `go/streamer.go` -- memoria O(1), `go build`/`go test` en verde en CI; no forma parte de `src/operations` (un paquete de Python aparte), es un componente standalone |
+
+PR-AUC es la métrica que realmente ordena los detectores acá, no ROC-AUC -- con el desbalance 99,87%/0,13% de este dataset las dos difieren a propósito: MAD-z saca ROC-AUC 0,383 (peor que tirar una moneda) mientras el mejor detector, Gaussian Mixture, llega a PR-AUC 0,807 contra un ROC-AUC de 0,948 que se vería casi igual de tranquilizador para modelos mucho más débiles. `summary_table()` en `src/unsupervised/benchmark.py` ordena por `pr_auc`, nunca por `roc_auc` -- confirmado por un test que construye dos detectores sintéticos donde las dos métricas eligen ganadores opuestos.
 
 ## Licencia
 

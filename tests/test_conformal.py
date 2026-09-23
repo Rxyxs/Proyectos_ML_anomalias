@@ -7,6 +7,7 @@ eso, el módulo estaría vendiendo una promesa incondicional que no tiene.
 """
 import numpy as np
 import pytest
+from scipy import stats
 
 from src.conformal.conformal import (
     ConformalDetector,
@@ -137,3 +138,52 @@ def test_el_detector_conforme_envuelve_cualquier_detector():
 def test_el_detector_conforme_exige_ajuste_previo():
     with pytest.raises(ValueError, match="antes de calcular p-valores"):
         ConformalDetector(HBOS()).p_values(np.zeros((3, 4)))
+
+
+# --------------------------------------------------- Día 17: uniformidad bajo H0
+
+def test_los_p_valores_son_uniformes_bajo_intercambiabilidad():
+    """La garantía P(p(x) <= alpha) <= alpha para todo alpha, en muestra finita,
+    es exactamente la afirmación de que los p-valores conformes son (super)uniformes
+    en [0, 1] bajo H0 (un punto legítimo, intercambiable con la calibración). Un
+    test de Kolmogorov-Smirnov contra Uniform(0,1) lo confirma directamente en vez
+    de solo chequear un par de cuantiles alpha sueltos."""
+    rng = np.random.default_rng(17)
+    calibracion = rng.normal(size=20_000)
+    legitimas = rng.normal(size=20_000)
+
+    p = conformal_p_values(calibracion, legitimas)
+    estadistico, p_valor_ks = stats.kstest(p, "uniform")
+
+    # No se rechaza H0 (uniforme) a un nivel de significancia convencional. Con
+    # 20.000 puntos el test tiene potencia de sobra para detectar un desvío real;
+    # un p-valor de KS chico aca significaría que la implementación no es uniforme.
+    assert p_valor_ks > 0.01, (
+        f"KS rechazó uniformidad bajo H0 (estadístico={estadistico:.4f}, "
+        f"p={p_valor_ks:.4g}) -- los p-valores conformes deberían ser uniformes "
+        f"bajo intercambiabilidad"
+    )
+
+
+def test_los_p_valores_se_sesgan_hacia_cero_bajo_anomalias():
+    """Contracara de la prueba anterior: bajo H1 (un punto genuinamente anómalo,
+    no intercambiable con la calibración), los p-valores tienen que dejar de ser
+    uniformes y concentrarse cerca de 0. Se verifica con el mismo test de KS
+    (ahora se espera que SÍ rechace uniformidad) y con dominancia estocástica
+    directa contra los p-valores de tráfico legítimo."""
+    rng = np.random.default_rng(23)
+    calibracion = rng.normal(size=20_000)
+    legitimas = rng.normal(size=5_000)
+    anomalias = rng.normal(loc=6.0, scale=1.0, size=5_000)  # muy por fuera de la calibración
+
+    p_legit = conformal_p_values(calibracion, legitimas)
+    p_anom = conformal_p_values(calibracion, anomalias)
+
+    _, p_valor_ks_legit = stats.kstest(p_legit, "uniform")
+    _, p_valor_ks_anom = stats.kstest(p_anom, "uniform")
+
+    assert p_valor_ks_legit > 0.01, "las legítimas deberían seguir pasando el chequeo de uniformidad"
+    assert p_valor_ks_anom < 1e-10, "las anómalas NO deberían superar el chequeo de uniformidad"
+
+    assert np.median(p_anom) < np.median(p_legit)
+    assert np.median(p_anom) < 0.01, "las anomalías deberían concentrarse cerca de p=0"
