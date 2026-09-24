@@ -3,9 +3,25 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 .env
+.env.local
+.env.*
+!.env.example
 *.csv
 *.joblib
 *.pkl
 *.duckdb
 .DS_Store
 .venv310/
+
+# Editor / SO
+.vscode/
+.idea/
+Thumbs.db
+
+# Binarios compilados (Python C-extensions + go/'s `go build ./...`)
+*.so
+*.dylib
+*.dll
+*.exe
+*.test
+*.out
