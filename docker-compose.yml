@@ -1,0 +1,31 @@
+services:
+  serving:
+    build: .
+    image: anomaly-detector-serving:latest
+    container_name: anomaly-serving
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: anomaly-prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+    depends_on:
+      - serving
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
