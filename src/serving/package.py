@@ -37,6 +37,7 @@ import pandas as pd
 
 from src.conformal.conformal import conformal_p_values, conformal_threshold
 from src.serving.explain import infer_dependency_groups
+from src.serving.metrics import instrument
 from src.unsupervised.models import anomaly_score, assert_finite
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -107,10 +108,12 @@ class DetectorPackage:
 
     # ------------------------------------------------------------------ scoring
 
+    @instrument(record_scores=True)
     def score(self, X) -> np.ndarray:
         """Anomaly score crudo. Más alto = más anómalo."""
         return anomaly_score(self.detector, self.to_scaled_matrix(X))
 
+    @instrument(record_scores=True)
     def score_from_scaled(self, X_scaled) -> np.ndarray:
         """Puntúa una matriz **ya escalada**, sin volver a pasar por el escalador.
 
@@ -133,6 +136,7 @@ class DetectorPackage:
         """Score a partir del cual se dispara una alerta, dado el alpha del paquete."""
         return conformal_threshold(self.calibration_scores, self.alpha)
 
+    @instrument()
     def predict(self, X) -> np.ndarray:
         """True para las transacciones que hay que alertar."""
         return self.p_values(X) <= self.alpha

@@ -32,6 +32,15 @@ def build_lof(contamination: float = DEFAULT_CONTAMINATION, n_neighbors: int = 2
     )
 
 
+class NonFiniteInputError(ValueError):
+    """NaN/Inf/no-numérico en la entrada. Subclase de ValueError (todo `except
+    ValueError` existente lo sigue capturando); existe aparte para que la capa
+    de telemetría (src/serving/metrics.py) distinga este rechazo específico de
+    cualquier otro ValueError (ej. columnas faltantes/inesperadas en
+    DetectorPackage.to_scaled_matrix) sin parsear el mensaje de error.
+    """
+
+
 def assert_finite(X, contexto: str = "la entrada") -> np.ndarray:
     """Rechaza NaN/Inf y valores no numéricos antes de puntuar, devolviendo el
     arreglo ya convertido a float si pasa el chequeo.
@@ -46,9 +55,9 @@ def assert_finite(X, contexto: str = "la entrada") -> np.ndarray:
     try:
         valores = np.asarray(X, dtype=float)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{contexto} contiene valores no numéricos: {exc}") from None
+        raise NonFiniteInputError(f"{contexto} contiene valores no numéricos: {exc}") from None
     if not np.isfinite(valores).all():
-        raise ValueError(f"{contexto} contiene NaN o valores infinitos.")
+        raise NonFiniteInputError(f"{contexto} contiene NaN o valores infinitos.")
     return valores
 
 
