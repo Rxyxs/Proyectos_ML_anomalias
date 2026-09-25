@@ -13,3 +13,6 @@ torch==2.14.0
 duckdb==1.5.5
 prometheus_client==0.26.0
 requests==2.34.2
+onnx==1.23.0
+onnxruntime==1.23.2
+skl2onnx==1.20.0
