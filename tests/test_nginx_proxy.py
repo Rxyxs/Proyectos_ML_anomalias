@@ -75,7 +75,13 @@ def test_cabeceras_de_seguridad_requeridas(nginx_conf_texto, cabecera, valor):
 
 
 def test_las_dos_rutas_reenvian_al_servicio_de_serving(nginx_conf_texto):
-    assert nginx_conf_texto.count("proxy_pass http://serving:8001;") == 2
+    """El hostname va en una variable, no en un literal `proxy_pass
+    http://serving:8001;` -- si no, `nginx -t` resuelve "serving" al cargar
+    la config y falla apenas el contenedor `serving` no esta ya en la red
+    (por ejemplo, al validar nginx.conf standalone, fuera de compose)."""
+    assert nginx_conf_texto.count("set $upstream_serving http://serving:8001;") == 2
+    assert nginx_conf_texto.count("proxy_pass $upstream_serving;") == 2
+    assert "resolver 127.0.0.11" in nginx_conf_texto
 
 
 def test_escucha_en_el_puerto_80(nginx_conf_texto):
