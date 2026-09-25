@@ -47,6 +47,26 @@ ANOMALY_SCORES_DISTRIBUTION = Histogram(
     labelnames=("detector_name",),
 )
 
+# Día 11 -- src/serving/batcher.py::DynamicBatcher. Las invocaciones reales a
+# score()/predict() que dispara un lote ya quedan instrumentadas por
+# ANOMALY_PREDICT_* de arriba (una observación por lote, no por fila -- es
+# justamente la señal de que el batching está reduciendo la cantidad de
+# llamadas); estas dos métricas son sobre el COMPORTAMIENTO del batcher en
+# sí, no sobre el detector.
+ANOMALY_BATCH_SIZE_HISTOGRAM = Histogram(
+    "anomaly_batch_size",
+    "Cantidad de filas por lote efectivamente despachado, por detector.",
+    labelnames=("detector_name",),
+    buckets=(1, 2, 4, 8, 16, 32, 64, 128),
+)
+
+ANOMALY_BATCH_WAIT_TIME_SECONDS = Histogram(
+    "anomaly_batch_wait_time_seconds",
+    "Tiempo que cada solicitud individual esperó en cola antes de que se despachara su lote.",
+    labelnames=("detector_name",),
+    buckets=(0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.05, 0.1),
+)
+
 
 def _detector_name(self) -> str:
     return str(self.metadata.get("detector", "desconocido"))
