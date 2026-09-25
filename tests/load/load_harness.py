@@ -1,6 +1,6 @@
 """Arnés de carga concurrente: satura `DetectorPackage.predict()` (tráfico
 normal y corrupto) y, en paralelo, el endpoint `/metrics`
-(`src/serving/metrics_server.py`, Día 2) para confirmar que el raspado de
+(`src/serving/metrics_server.py`) para confirmar que el raspado de
 Prometheus no degrada la latencia de inferencia.
 
 Sin Locust a propósito: Locust está construido alrededor de un cliente HTTP
@@ -44,7 +44,7 @@ import requests
 from src.serving.package import DetectorPackage
 
 DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parents[2] / "outputs" / "load" / "load_test_report.json"
-VALID_ERROR_RATE_THRESHOLD = 0.001  # 0.1%, el umbral que pide el Día 10 sobre trafico VALIDO
+VALID_ERROR_RATE_THRESHOLD = 0.001  # 0.1%, mi umbral aceptable de error sobre trafico VALIDO
 
 
 @dataclass

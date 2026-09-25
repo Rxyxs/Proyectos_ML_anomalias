@@ -1,4 +1,4 @@
-"""Contrato común de los modelos de detección de anomalías (Día 15, endurecido Día 16).
+"""Contrato común de los modelos de detección de anomalías.
 
 Tres propiedades que todo detector del repositorio (los de src.unsupervised.models
 y los de src.unsupervised.families) debería cumplir para ser seguro de enchufar en
@@ -10,9 +10,9 @@ src.serving.predict, verificadas explícitamente en vez de asumidas:
    produce IsolationForest.predict() se mantiene cerca del contamination con el que
    se ajustó -- no se dispara ni colapsa a cero solo porque el set de prueba está
    desbalanceado.
-3. Ante NaN/Inf en la entrada, TODOS los detectores rechazan con ValueError. El Día
-   15 encontró que HBOS, ECOD, LODA y MADBaseline no fallaban solos -- devolvían un
-   score no finito o silenciosamente "razonable" sin avisar. El Día 16 les agregó
+3. Ante NaN/Inf en la entrada, TODOS los detectores rechazan con ValueError. Encontré
+   que HBOS, ECOD, LODA y MADBaseline no fallaban solos -- devolvían un
+   score no finito o silenciosamente "razonable" sin avisar. Les agregué
    assert_finite() (src.unsupervised.models) a los cuatro. El único que sigue sin
    poder validarse a sí mismo es IsolationForest (es código de scikit-learn, no
    propio); por eso se prueba tanto que llamado directo sigue sin validar como que,
@@ -151,7 +151,7 @@ def _con_nan_e_inf(X: np.ndarray) -> np.ndarray:
 
 
 # Los 9 detectores de families.py: 6 ya rechazaban por apoyarse en scikit-learn
-# (GMM, kNN, MCD, Nystroem, PCA), y desde el Día 16 los 3 hechos a mano (HBOS,
+# (GMM, kNN, MCD, Nystroem, PCA), y ahora los 3 hechos a mano (HBOS,
 # ECOD, LODA) tambien -- vía assert_finite() en su propio score_samples.
 _TODOS_LOS_DETECTORES_DE_FAMILIES = [
     "gmm_density", "knn_distance", "robust_mahalanobis", "ocsvm_nystroem", "abod",
@@ -171,8 +171,8 @@ def test_los_nueve_detectores_de_families_rechazan_nan_e_inf(normal_data):
 
 
 def test_mad_baseline_rechaza_nan_e_inf(normal_data):
-    """Antes del Día 16, el baseline hecho a mano propagaba NaN/Inf en silencio --
-    era el gap mas claro del audit del Día 15, porque es el unico detector sin
+    """Antes de mi fix, el baseline hecho a mano propagaba NaN/Inf en silencio --
+    era el gap mas claro que encontré, porque es el unico detector sin
     ninguna dependencia de scikit-learn que le regale la validacion gratis. Ahora
     score_samples llama assert_finite() igual que HBOS/ECOD/LODA."""
     detector = MADBaseline().fit(normal_data)
@@ -190,7 +190,7 @@ def test_lof_rechaza_nan(normal_data):
 
 def test_isolation_forest_llamado_directo_sigue_sin_validar(normal_data):
     """IsolationForest es de scikit-learn: no se puede tocar su código para que
-    valide. Documenta el limite exacto de lo que el Día 16 puede arreglar por su
+    valide. Documenta el limite exacto de lo que puedo arreglar por mi
     cuenta -- la próxima prueba confirma que la capa de serving, que sí es código
     propio, lo cubre igual."""
     detector = build_isolation_forest().fit(normal_data)

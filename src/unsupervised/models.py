@@ -45,7 +45,7 @@ def assert_finite(X, contexto: str = "la entrada") -> np.ndarray:
     """Rechaza NaN/Inf y valores no numéricos antes de puntuar, devolviendo el
     arreglo ya convertido a float si pasa el chequeo.
 
-    Día 15 encontró que IsolationForest, HBOS, ECOD, LODA y MADBaseline no fallan
+    Encontré que IsolationForest, HBOS, ECOD, LODA y MADBaseline no fallan
     solos ante un NaN o un Inf en la entrada -- devuelven un score sin sentido en
     silencio en vez de avisar (los demás detectores, apoyados en scikit-learn puro
     -- GMM, kNN, MCD, Nystroem, PCA --, ya rechazan por su cuenta). Este chequeo

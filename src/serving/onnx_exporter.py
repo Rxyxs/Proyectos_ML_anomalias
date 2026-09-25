@@ -11,10 +11,10 @@ tienen convertidor: `export_detector_to_onnx` lo detecta y lanza
 `UnsupportedDetectorError` en vez de producir un grafo silenciosamente
 incorrecto.
 
-Verificado end-to-end con `IsolationForest`: el `score_samples` que devuelve
-el grafo ONNX coincide con el del modelo nativo a ~1e-7 (ver
+Lo verifiqué end-to-end con `IsolationForest`: el `score_samples` que
+devuelve el grafo ONNX coincide con el del modelo nativo a ~1e-7 (ver
 `tests/test_onnx_serving.py`), muy por debajo de la tolerancia de 1e-4 que
-pide el Día 9.
+me propuse como umbral.
 """
 from __future__ import annotations
 

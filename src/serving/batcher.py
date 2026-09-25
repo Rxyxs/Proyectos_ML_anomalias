@@ -3,9 +3,9 @@ una sola matriz NumPy y las despacha juntas a `DetectorPackage`, para
 amortizar el costo fijo por llamada (instrumentación, overhead de
 scikit-learn/ONNX Runtime) entre varias filas en vez de pagarlo una por una.
 
-`queue.Queue` + `threading`, no `asyncio.Queue`: el resto de la capa de
-serving de este repo (`DetectorPackage`, `ONNXDetectorWrapper`) es
-síncrona, y el arnés de carga del Día 10 ya usa threads, no un loop de
+Elegí `queue.Queue` + `threading` en vez de `asyncio.Queue`: el resto de la
+capa de serving de este repo (`DetectorPackage`, `ONNXDetectorWrapper`) es
+síncrona, y mi arnés de carga (`tests/load/`) ya usa threads, no un loop de
 eventos -- meter asyncio acá agregaría un segundo modelo de concurrencia sin
 necesidad real.
 

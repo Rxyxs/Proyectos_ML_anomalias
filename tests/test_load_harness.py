@@ -22,8 +22,8 @@ from wsgiref.simple_server import make_server
 
 def _detector_total(detector_name: str) -> float:
     """Suma de anomaly_predict_requests_total sobre todos los `status`, para
-    un `detector_name` -- cuenta TODAS las invocaciones registradas por la
-    telemetría del Día 1, sin importar si terminaron en éxito o rechazo."""
+    un `detector_name` -- cuenta TODAS las invocaciones registradas por mi
+    telemetría de serving, sin importar si terminaron en éxito o rechazo."""
     total = 0.0
     for familia in ANOMALY_PREDICT_REQUESTS_TOTAL.collect():
         for muestra in familia.samples:
@@ -114,7 +114,7 @@ def test_metrics_scenario_works_under_concurrency(demo_package, metrics_server):
 # ---------------------------------------------------------------------------
 
 def test_concurrent_saturation_registers_every_request_in_prometheus_with_no_event_loss():
-    """El contador de Prometheus (Día 1) tiene que reflejar EXACTAMENTE la
+    """El contador de Prometheus tiene que reflejar EXACTAMENTE la
     cantidad de invocaciones reales a predict()/score() bajo carga
     concurrente -- ni un evento de menos (el riesgo real de una métrica
     compartida entre threads sin el locking correcto de prometheus_client)."""
@@ -144,15 +144,15 @@ def test_concurrent_saturation_registers_every_request_in_prometheus_with_no_eve
     despues = _detector_total(detector_name)
 
     # Cada predict() dispara 2 invocaciones instrumentadas (predict + score
-    # interno, ver src/serving/package.py) -- el conteo del Día 1 ya prueba
-    # esa relación; acá se verifica que se registró AL MENOS una por
+    # interno, ver src/serving/package.py) -- ya probé esa relación en
+    # tests/test_serving_metrics.py; acá se verifica que se registró AL MENOS una por
     # request real, sin faltantes, bajo concurrencia real.
     assert despues - antes >= reporte["total_requests"]
 
 
 def test_load_burst_does_not_leak_memory():
-    """No es un detector de leaks riguroso -- es el chequeo práctico que
-    pide el Día 10: RSS antes/después de una ráfaga real no debería crecer
+    """No es un detector de leaks riguroso -- es el chequeo práctico que me
+    propuse: RSS antes/después de una ráfaga real no debería crecer
     de forma desproporcionada al tamaño de la ráfaga."""
     package, features = _build_demo_package(seed=3)
 

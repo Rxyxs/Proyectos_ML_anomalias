@@ -222,7 +222,7 @@ def test_nan_rejection_is_fast_not_just_safe(wrapper):
 
 
 # ---------------------------------------------------------------------------
-# integración con la telemetría del Día 1/2
+# integración con la telemetría de serving
 # ---------------------------------------------------------------------------
 
 def _counter_value(counter, **labels) -> float:

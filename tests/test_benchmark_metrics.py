@@ -1,4 +1,4 @@
-"""Día 17 — confirma que el benchmark prioriza PR-AUC sobre ROC-AUC bajo desbalance.
+"""Confirma que el benchmark prioriza PR-AUC sobre ROC-AUC bajo desbalance.
 
 Con 99% inliers / 1% outliers, ROC-AUC puede ser optimista: promedia sobre TODOS los
 pares negativo/positivo, así que un puñado de falsos positivos con score alto (que

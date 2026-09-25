@@ -47,12 +47,12 @@ ANOMALY_SCORES_DISTRIBUTION = Histogram(
     labelnames=("detector_name",),
 )
 
-# Día 11 -- src/serving/batcher.py::DynamicBatcher. Las invocaciones reales a
-# score()/predict() que dispara un lote ya quedan instrumentadas por
-# ANOMALY_PREDICT_* de arriba (una observación por lote, no por fila -- es
-# justamente la señal de que el batching está reduciendo la cantidad de
-# llamadas); estas dos métricas son sobre el COMPORTAMIENTO del batcher en
-# sí, no sobre el detector.
+# Estas dos son del batcher (src/serving/batcher.py::DynamicBatcher). Las
+# invocaciones reales a score()/predict() que dispara un lote ya quedan
+# instrumentadas por ANOMALY_PREDICT_* de arriba (una observación por lote,
+# no por fila -- es justamente la señal de que el batching está reduciendo
+# la cantidad de llamadas); estas dos métricas son sobre el COMPORTAMIENTO
+# del batcher en sí, no sobre el detector.
 ANOMALY_BATCH_SIZE_HISTOGRAM = Histogram(
     "anomaly_batch_size",
     "Cantidad de filas por lote efectivamente despachado, por detector.",

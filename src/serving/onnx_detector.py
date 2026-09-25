@@ -1,17 +1,17 @@
 """Wrapper de inferencia acelerada sobre una `onnxruntime.InferenceSession`.
 
-Mismo contrato de telemetría que `DetectorPackage` (`src/serving/metrics.py`,
-Día 1/2 de este plan) y la misma convención de signo que `anomaly_score()`
+Mismo contrato de telemetría que `DetectorPackage` (`src/serving/metrics.py`)
+y la misma convención de signo que `anomaly_score()`
 (`src/unsupervised/models.py`): más alto = más anómalo. La diferencia real
 es de motor -- acá no hay scikit-learn ni el objeto Python original en el
 proceso que sirve, solo el grafo ONNX y `onnxruntime`.
 
-Latencia sub-milisegundo real, con una salvedad medida y no escondida: el
+Latencia sub-milisegundo real, con una salvedad que medí y no escondo: el
 costo del op TreeEnsemble de ONNX Runtime escala ~linealmente con la
-cantidad de árboles de un `IsolationForest` (perfilado real, latencia media
+cantidad de árboles de un `IsolationForest` (perfilé esto: latencia media
 por fila: 10 árboles -> 0.50ms, 100 -> 4.79ms, 200 -> 9.29ms). Los 200
 árboles por defecto de `build_isolation_forest()` (`src/unsupervised/models.py`)
-NO llegan a sub-milisegundo en CPU; `tests/test_onnx_serving.py` lo verifica
+NO llegan a sub-milisegundo en CPU; verifico en `tests/test_onnx_serving.py`
 con 15 árboles, donde sí hay margen real (media 0.55ms, máximo 0.76ms sobre
 500 corridas). Para servir el modelo de 200 árboles bajo ese presupuesto de
 latencia hacen falta más árboles solo si el caso de uso realmente los

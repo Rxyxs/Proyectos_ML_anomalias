@@ -140,7 +140,7 @@ def test_el_detector_conforme_exige_ajuste_previo():
         ConformalDetector(HBOS()).p_values(np.zeros((3, 4)))
 
 
-# --------------------------------------------------- Día 17: uniformidad bajo H0
+# --------------------------------------------------- uniformidad bajo H0
 
 def test_los_p_valores_son_uniformes_bajo_intercambiabilidad():
     """La garantía P(p(x) <= alpha) <= alpha para todo alpha, en muestra finita,

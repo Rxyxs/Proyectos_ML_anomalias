@@ -145,8 +145,8 @@ def test_batched_score_matches_direct_execution_exactly(package):
     esperada de que GMM.score_samples reduce (suma/logsumexp) en un orden
     distinto según la forma del lote. No es un bug del batcher: es
     no-asociatividad de punto flotante en BLAS vectorizado, el mismo
-    fenómeno que ya se documentó para ONNX vs. nativo (Día 9), acá una
-    escala más chica porque es el mismo runtime de numpy en los dos lados.
+    fenómeno que ya documenté para ONNX vs. nativo (src/serving/onnx_exporter.py),
+    acá una escala más chica porque es el mismo runtime de numpy en los dos lados.
     """
     rng = np.random.default_rng(7)
     filas = [rng.normal(size=4) for _ in range(64)]
@@ -264,7 +264,7 @@ def test_a_batch_scoring_error_propagates_to_every_requester_in_that_batch(packa
 
 
 # ---------------------------------------------------------------------------
-# telemetría del batcher (Día 11)
+# telemetría del batcher
 # ---------------------------------------------------------------------------
 
 def test_batch_wait_time_metric_is_recorded_per_request():
