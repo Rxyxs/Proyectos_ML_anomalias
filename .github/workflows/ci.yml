@@ -96,3 +96,6 @@ jobs:
 
       - name: Construir y validar el contenedor del serving (usuario no-root, healthcheck)
         run: pytest tests/test_container_security.py -v
+
+      - name: Validar el proxy Nginx (rate limiting, cabeceras, sintaxis real con nginx -t)
+        run: pytest tests/test_nginx_proxy.py -v
