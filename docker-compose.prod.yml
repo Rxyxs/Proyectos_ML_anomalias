@@ -1,0 +1,50 @@
+# Variante de produccion de docker-compose.yml: mismos dos servicios, pero
+# con limites de recursos, "no-new-privileges" y una red propia en vez de
+# compartir nombres con la version de desarrollo.
+services:
+  serving:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: anomaly-detector-serving:prod
+    container_name: anomaly-serving-prod
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - monitoring_net
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: anomaly-prometheus-prod
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - metrics-data:/prometheus
+    networks:
+      - monitoring_net
+    depends_on:
+      - serving
+
+networks:
+  monitoring_net:
+    driver: bridge
+
+volumes:
+  metrics-data:

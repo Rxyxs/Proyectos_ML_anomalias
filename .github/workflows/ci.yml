@@ -81,3 +81,18 @@ jobs:
 
       - name: Verificar que la imagen del streamer compila
         run: docker build -t bank-anomaly-streamer ./go
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Este job sí tiene Docker (a diferencia del runner de `pytest`), asi
+      # que test_container_security.py corre acá de verdad -- construye la
+      # imagen del serving, levanta un contenedor y comprueba en vivo el
+      # UID no-root y el HEALTHCHECK, no solo la estructura del Dockerfile.
+      - name: Instalar dependencias del test de seguridad del contenedor
+        run: pip install pytest PyYAML
+
+      - name: Construir y validar el contenedor del serving (usuario no-root, healthcheck)
+        run: pytest tests/test_container_security.py -v
