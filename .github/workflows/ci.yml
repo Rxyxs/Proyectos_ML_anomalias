@@ -91,11 +91,20 @@ jobs:
       # que test_container_security.py corre acá de verdad -- construye la
       # imagen del serving, levanta un contenedor y comprueba en vivo el
       # UID no-root y el HEALTHCHECK, no solo la estructura del Dockerfile.
-      - name: Instalar dependencias del test de seguridad del contenedor
-        run: pip install pytest PyYAML
+      - name: Instalar dependencias de las pruebas con Docker
+        run: pip install pytest PyYAML requests
 
       - name: Construir y validar el contenedor del serving (usuario no-root, healthcheck)
         run: pytest tests/test_container_security.py -v
 
       - name: Validar el proxy Nginx (rate limiting, cabeceras, sintaxis real con nginx -t)
         run: pytest tests/test_nginx_proxy.py -v
+
+      # RUN_DOCKER_E2E=1: habilita la pila completa serving+proxy solo en ESTE
+      # job -- sin la bandera, `pytest` (3.10/3.12) tambien tiene Docker y
+      # repetiria el mismo build pesado y las mismas rafagas 2 veces mas por
+      # nada (ver tests/conftest.py).
+      - name: Levantar serving+proxy real y correr las pruebas e2e (rate limiting, cabeceras, overhead)
+        env:
+          RUN_DOCKER_E2E: "1"
+        run: pytest tests/test_nginx_load_e2e.py tests/test_proxy_performance.py -v -s
