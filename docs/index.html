@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bank Anomaly Detection</title>
+<meta name="description" content="Fraud and anomaly detection system for mobile banking transactions, built on the synthetic **PaySim** dataset ([`ealaxi/paysim1`](https://www.kaggle.com/datasets/ealaxi/paysim1) on">
+<style>
+  :root { --bg:#FBFAF8; --surface:#FFF; --ink:#23201D; --muted:#6B645D; --line:#E3DED7; --accent:#B5553D; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#171614; --surface:#201E1B; --ink:#EDE9E3; --muted:#A9A29A; --line:#322E2A; --accent:#D9765C; } }
+  :root[data-theme="dark"] { --bg:#171614; --surface:#201E1B; --ink:#EDE9E3; --muted:#A9A29A; --line:#322E2A; --accent:#D9765C; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.68 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:900px; margin:0 auto; padding:0 16px 88px; }
+  header { padding:60px 0 32px; border-bottom:1px solid var(--line); margin-bottom:36px; }
+  h1 { font-size:clamp(1.7rem,5vw,2.4rem); line-height:1.16; margin:0 0 18px; letter-spacing:-.02em; }
+  .lede { font-size:clamp(1rem,2.3vw,1.1rem); color:var(--muted); margin:0 0 22px; max-width:62ch; }
+  .lede strong { color:var(--ink); }
+  .links a { display:inline-block; margin:0 9px 9px 0; padding:9px 15px; border:1px solid var(--line);
+    border-radius:7px; text-decoration:none; color:var(--ink); background:var(--surface); font-size:.9rem;
+    transition:border-color .15s; }
+  .links a:hover { border-color:var(--accent); }
+  h2 { font-size:1.3rem; margin:48px 0 8px; padding-top:12px; border-top:1px solid var(--line); letter-spacing:-.01em; }
+  figure { margin:22px 0; }
+  figure img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:9px; background:#fff; }
+  figcaption { font-size:.85rem; color:var(--muted); margin-top:9px; max-width:70ch; }
+  p { margin:0 0 16px; max-width:70ch; }
+  code { background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:.86em;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+  footer { margin-top:60px; padding-top:22px; border-top:1px solid var(--line); font-size:.86rem; color:var(--muted); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Bank Anomaly Detection</h1>
+<p class="lede">Fraud and anomaly detection system for mobile banking transactions, built on the synthetic <strong>PaySim</strong> dataset (<a href="https://www.kaggle.com/datasets/ealaxi/paysim1"><code>ealaxi/paysim1</code></a> on Kaggle), which simulates financial transactions based on a month of data from a real mobile money service in Africa.</p>
+<div class="links">
+<a href="https://github.com/Rxyxs/Proyectos_ML_anomalias">Code and method</a>
+<a href="https://github.com/Rxyxs/Proyectos_ML_anomalias#readme">Full README</a>
+</div></header>
+<p>This page shows the project's results. The methodology, the design decisions and the limitations are documented in the repository's README.</p>
+<h2>What to look at before modeling anything</h2>
+<figure>
+<img src="figures/dataset_overview.png" alt="Dataset overview" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Top left, the class imbalance on a log scale — without the log scale the fraud bar would be invisible, which is exactly the point. Top right, the fraud rate by transaction type. Bottom left, the amount distribution by class, also logarithmic. Bottom right, two overlaid series: daily volume (blue area, left axis) and daily fraud count (orange line, right axis).</figcaption>
+</figure>
+<h2>Results</h2>
+<figure>
+<img src="figures/pr_curves.png" alt="Supervised Precision-Recall curves" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Three Precision-Recall curves on the same test set. The dashed chance line sits at 0.0013 — almost flush with the x axis, because prevalence is 0.13%. Random Forest and XGBoost hug the top of the figure until recall 0.99; Logistic Regression collapses as soon as it moves away from the origin.</figcaption>
+</figure>
+<figure>
+<img src="figures/roc_curves.png" alt="Supervised ROC curves" loading="lazy">
+<figcaption><strong>How to read the figure, and why it misleads.</strong> The three ROC curves look nearly identical and all excellent: 0.99 or better. Set against the previous figure, this is the visual demonstration of why ROC-AUC doesn&#x27;t work as a headline metric under extreme imbalance — Logistic Regression has ROC-AUC 0.9900 and PR-AUC 0.5959. <strong>The same pair of numbers, on the same row, differs by 0.4.</strong> ROC&#x27;s x axis is the false-positive rate, and with 1.27 million negatives, flagging 57,000 extras barely moves it.</figcaption>
+</figure>
+<figure>
+<img src="figures/confusion_matrices.png" alt="Confusion matrices" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> One matrix per model, with absolute counts in each cell. The cell that matters is the top right: false positives, i.e. legitimate transactions flagged as fraud. Random Forest has 1; Logistic Regression has roughly 55,800.</figcaption>
+</figure>
+<h2>Measured results (Module 2)</h2>
+<figure>
+<img src="figures/unsupervised_scores.png" alt="Anomaly score distributions" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> One panel per detector, showing the anomaly-score distribution of legitimate transactions (blue) against fraudulent ones (orange). The x axis is logarithmic and clipped to the 0.5 and 99.5 percentiles — without that clipping, a single extreme tail would compress the whole region where the two distributions actually separate.</figcaption>
+</figure>
+<figure>
+<img src="figures/unsupervised_pr_curve.png" alt="Precision-Recall curve" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Each curve sweeps every possible threshold of a detector: moving right flags more transactions, so recall rises and precision falls. The dashed horizontal line is chance — on a set enriched to 14.1%, flagging transactions at random is right 14.1% of the time.</figcaption>
+</figure>
+<figure>
+<img src="figures/autoencoder_activations.png" alt="Autoencoder activation comparison" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Three bars, one per activation function, on exactly the same architecture, data and seed. The only thing that changes is the non-linearity.</figcaption>
+</figure>
+<h2>Results</h2>
+<figure>
+<img src="figures/benchmark_ranking.png" alt="Ranking by family" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Horizontal bars ordered by PR-AUC, colored by detector family. The colors matter more than the order: if two bars of the same color sat together, it would suggest that family dominates through some structural property. They don&#x27;t — the families are scattered across the ranking, and detectors of the same family (the two reconstruction-based ones, the three per-feature statistical ones) land far apart.</figcaption>
+</figure>
+<h2>Which detectors are redundant?</h2>
+<figure>
+<img src="figures/benchmark_correlation.png" alt="Correlation between detectors" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Spearman correlation between anomaly *rankings*, not between raw scores. Spearman precisely because the scores live on incomparable scales: a Mahalanobis distance and a log-likelihood can&#x27;t be meaningfully correlated linearly, but the order they produce can.</figcaption>
+</figure>
+<figure>
+<img src="figures/benchmark_pr_curve.png" alt="Precision-Recall curves" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Only the six best by PR-AUC, because sixteen overlapping curves are unreadable. The interesting part is that they <strong>cross</strong>: no detector dominates across the whole recall range. Gaussian Mixture leads at the right end and Local Outlier Factor between recall 0.4 and 0.8, so which one you want depends on where the team operates — there&#x27;s no single answer aggregate PR-AUC can give.</figcaption>
+</figure>
+<h2>Transaction level: the objective matters more than the depth</h2>
+<figure>
+<img src="figures/deep_pr_curve.png" alt="Deep model PR curves" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> The same Precision-Recall curves as Module 2, restricted to the three deep models with the autoencoder included as a reference. All three were trained in the <strong>same run</strong>, on the same split and the same scaling: without that, comparing against a number measured in another execution would mix the between-model difference with between-run variance.</figcaption>
+</figure>
+<h2>Account level: the sequential detector</h2>
+<figure>
+<img src="figures/sequence_detector.png" alt="Sequential detector" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> On the left, the reconstruction-error distribution of clean accounts (blue) against accounts that received fraud (orange). On the right, the corresponding Precision-Recall curve with the chance line dashed.</figcaption>
+</figure>
+<h2>Results</h2>
+<figure>
+<img src="figures/operations_savings.png" alt="Net savings and value-weighted recall" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> The x axis — how many alerts get reviewed — is logarithmic in both panels, because the interesting decisions happen between 10 and 10,000 and a linear scale would crush that whole range against the origin.</figcaption>
+</figure>
+<h2>The threshold: promised versus delivered</h2>
+<figure>
+<img src="figures/operations_calibration.png" alt="Threshold calibration" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Both axes logarithmic, and the dashed diagonal is perfect calibration: promise 1% false alarms and deliver 1%. A detector <strong>above</strong> the diagonal fires more alerts than promised; below it, fewer.</figcaption>
+</figure>
+<h2>Does the detector age?</h2>
+<figure>
+<img src="figures/operations_drift.png" alt="Temporal degradation" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> The lines are each test-period day&#x27;s ROC-AUC (left axis); the grey background bars are that day&#x27;s transaction volume (right axis). The bars are there so you can judge how much confidence each point deserves: a day with few transactions gives a noisy metric even though it&#x27;s drawn like all the others.</figcaption>
+</figure>
+<h2>Adding detectors is not the same as adding coverage</h2>
+<figure>
+<img src="figures/benchmark_correlation.png" alt="Correlation between detectors" loading="lazy">
+</figure>
+<h2>Conformal detection: turning a hope into a guarantee</h2>
+<figure>
+<img src="figures/conformal_coverage.png" alt="Conformal coverage" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Two panels sharing a y axis, with the dashed diagonal as the guarantee. On the left, calibration and evaluation from the same period: the scenario where exchangeability holds by construction. On the right, evaluation moves to the later period.</figcaption>
+</figure>
+<figure>
+<img src="figures/conformal_pvalues.png" alt="P-value distribution" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Histograms of the conformal p-values of <strong>legitimate</strong> transactions, with the dashed line at density 1, which is the uniform. Under exchangeability those p-values should be uniform on [0,1]: that&#x27;s the statistical content of the guarantee.</figcaption>
+</figure>
+<h2>Half-Space Trees: adapting costs one linear pass</h2>
+<figure>
+<img src="figures/adaptive_streaming.png" alt="Adaptive streaming" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Two daily ROC-AUC series over exactly the same days and the same data. They share trees, seed and initial window; the only difference is that the orange line refreshes its mass profile with the previous day&#x27;s traffic.</figcaption>
+</figure>
+<h2>Fifty labels well spent beat a thousand at random</h2>
+<figure>
+<img src="figures/adaptive_label_budget.png" alt="Label budget" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> Two panels sharing a y axis, with the x axis — number of labeled transactions — logarithmic. On the left, labeling the alert queue; on the right, labeling at random. In each panel, one line uses only the original features and the other adds the 16 detectors&#x27; scores.</figcaption>
+</figure>
+<h2>A badly designed experiment, and its correction</h2>
+<figure>
+<img src="figures/adaptive_active_learning.png" alt="Active learning" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> On the left, how much each strategy learns (PR-AUC on the later period). On the right, how much fraud it finds along the way. The two panels have to be read together: a strategy that learns a lot but catches nothing meanwhile carries an operational cost the left panel doesn&#x27;t show.</figcaption>
+</figure>
+<h2>Results</h2>
+<figure>
+<img src="figures/recalibration.png" alt="Continuous recalibration" loading="lazy">
+<figcaption><strong>How to read the figure.</strong> On the left, the percentage of transactions alerted each day by the four strategies, with the dashed line at the promised 1%. On the right, for the static package only, two series that measure the same thing with and without labels: the tail ratio — fraction alerted divided by α, computable the same day — and the real FPR divided by α, which requires knowing which transactions were legitimate.</figcaption>
+</figure>
+<footer>
+Pablo Reyes · <a href="https://github.com/Rxyxs/Proyectos_ML_anomalias">github.com/Rxyxs/Proyectos_ML_anomalias</a> · MIT<br><br>
+Every figure on this page is produced by the repository's pipeline. For the full method and its limitations, see the README.
+</footer>
+</div></body></html>
