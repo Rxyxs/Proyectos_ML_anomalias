@@ -2,7 +2,7 @@
 
 # Bank Anomaly Detection
 
-[![CI](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/ci.yml/badge.svg)](https://github.com/Rxyxs/Proyectos_ML_anomalias/actions/workflows/ci.yml)
+[![CI](https://github.com/Rxyxs/paysim-anomaly-detection-benchmark/actions/workflows/ci.yml/badge.svg)](https://github.com/Rxyxs/paysim-anomaly-detection-benchmark/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.12-3776AB?logo=python&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-16%20detectores-F7931E?logo=scikitlearn&logoColor=white)
